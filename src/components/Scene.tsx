@@ -33,27 +33,22 @@ function SceneContent({ cells, exploredPaths, units }: SceneProps) {
         target={[0, 0, 0]}
       />
 
-      {/* Lighting - brighter for visibility */}
-      <ambientLight intensity={0.7} />
+      {/* Lighting - simplified for performance */}
+      <ambientLight intensity={0.8} />
       <directionalLight
         position={[10, 20, 5]}
-        intensity={1.5}
+        intensity={1.8}
         castShadow
-        shadow-mapSize-width={2048}
-        shadow-mapSize-height={2048}
-        shadow-camera-far={60}
-        shadow-camera-left={-30}
-        shadow-camera-right={30}
-        shadow-camera-top={30}
-        shadow-camera-bottom={-30}
+        shadow-mapSize-width={1024}
+        shadow-mapSize-height={1024}
+        shadow-camera-far={50}
+        shadow-camera-left={-25}
+        shadow-camera-right={25}
+        shadow-camera-top={25}
+        shadow-camera-bottom={-25}
       />
-      <pointLight position={[-10, 8, -10]} intensity={0.8} color="#4488ff" />
-      <pointLight position={[10, 6, 15]} intensity={0.6} color="#ff8844" />
-      {/* Central fill light */}
-      <pointLight position={[0, 5, 0]} intensity={0.5} color="#aabbff" />
-      {/* Rim lights for depth */}
-      <pointLight position={[-15, 3, 10]} intensity={0.4} color="#88ffaa" />
-      <pointLight position={[15, 3, -10]} intensity={0.4} color="#ffaa88" />
+      {/* Two hemisphere lights for even fill instead of many point lights */}
+      <hemisphereLight intensity={0.4} color="#aabbff" groundColor="#332244" />
 
       {/* Fog - pushed way back for maximum visibility */}
       <fog attach="fog" args={['#0a0a18', 40, 100]} />

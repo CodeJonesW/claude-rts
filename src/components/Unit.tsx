@@ -16,42 +16,52 @@ export default function Unit({ unit }: UnitProps) {
   // Floating height above the grid
   const FLOAT_HEIGHT = 3
 
-  // Animate position
+  // Animate position - throttled to reduce CPU load
+  const lastUpdateRef = useRef(0)
+
   useFrame(() => {
     if (!groupRef.current) return
 
-    const elapsed = (Date.now() - startTime.current) / 1000
+    const now = Date.now()
+    const elapsed = (now - startTime.current) / 1000
 
-    // Calculate target position above the file being accessed
-    let targetX = 0
-    let targetZ = 0
+    // Throttle position updates to ~30fps
+    const shouldUpdatePosition = now - lastUpdateRef.current > 33
 
-    if (unit.targetPosition) {
-      const worldPos = gridToWorld(unit.targetPosition.x, unit.targetPosition.y, 0)
-      targetX = worldPos[0]
-      targetZ = worldPos[2]
+    if (shouldUpdatePosition) {
+      lastUpdateRef.current = now
+
+      // Calculate target position above the file being accessed
+      let targetX = 0
+      let targetZ = 0
+
+      if (unit.targetPosition) {
+        const worldPos = gridToWorld(unit.targetPosition.x, unit.targetPosition.y, 0)
+        targetX = worldPos[0]
+        targetZ = worldPos[2]
+      }
+
+      // Smooth movement towards target
+      const currentPos = groupRef.current.position
+      const lerpSpeed = 0.05 // Slightly faster to compensate for lower update rate
+      const newX = currentPos.x + (targetX - currentPos.x) * lerpSpeed
+      const newZ = currentPos.z + (targetZ - currentPos.z) * lerpSpeed
+
+      // Gentle floating motion
+      const floatOffset = Math.sin(elapsed * 1.5) * 0.15
+      const newY = FLOAT_HEIGHT + floatOffset
+
+      groupRef.current.position.set(newX, newY, newZ)
+
+      // Gentle rotation/tilt based on movement
+      const moveX = targetX - currentPos.x
+      const moveZ = targetZ - currentPos.z
+      groupRef.current.rotation.z = -moveX * 0.02
+      groupRef.current.rotation.x = moveZ * 0.02
     }
 
-    // Smooth movement towards target
-    const currentPos = groupRef.current.position
-    const lerpSpeed = 0.03
-    const newX = currentPos.x + (targetX - currentPos.x) * lerpSpeed
-    const newZ = currentPos.z + (targetZ - currentPos.z) * lerpSpeed
-
-    // Gentle floating motion
-    const floatOffset = Math.sin(elapsed * 1.5) * 0.15
-    const newY = FLOAT_HEIGHT + floatOffset
-
-    groupRef.current.position.set(newX, newY, newZ)
-
-    // Gentle rotation/tilt based on movement
-    const moveX = targetX - currentPos.x
-    const moveZ = targetZ - currentPos.z
-    groupRef.current.rotation.z = -moveX * 0.02
-    groupRef.current.rotation.x = moveZ * 0.02
-
-    // Screen flicker effect when working
-    if (screenRef.current) {
+    // Screen flicker effect - can run less frequently too
+    if (screenRef.current && shouldUpdatePosition) {
       const material = screenRef.current.material as THREE.MeshStandardMaterial
       if (unit.state === 'working') {
         material.emissiveIntensity = 1.5 + Math.sin(elapsed * 20) * 0.5

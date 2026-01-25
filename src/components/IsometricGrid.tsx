@@ -123,25 +123,10 @@ function FileBuilding({ cell, explored }: { cell: GridCell; explored: boolean })
               emissiveIntensity={1.5}
             />
           </mesh>
-          {/* Point light for directory glow */}
-          <pointLight
-            position={[0, height + 0.4, 0]}
-            intensity={explored ? 0.5 : 0.2}
-            distance={2}
-            color="#00ff88"
-          />
         </>
       )}
 
-      {/* Point light for each node - makes them visible from distance */}
-      <pointLight
-        position={[0, height + 0.2, 0]}
-        intensity={explored ? 0.3 : 0.15}
-        distance={1.5}
-        color={fileColor}
-      />
-
-      {/* Label - larger text with stronger outline */}
+      {/* Label - simplified for performance */}
       {cell.node && (
         <Billboard
           follow={true}
@@ -155,26 +140,9 @@ function FileBuilding({ cell, explored }: { cell: GridCell; explored: boolean })
             color={explored ? (isDirectory ? '#00ff88' : '#ffffff') : (isDirectory ? '#55aa77' : '#aabbcc')}
             anchorX="center"
             anchorY="bottom"
-            outlineWidth={0.02}
-            outlineColor="#000000"
-            fontWeight="bold"
           >
             {cell.node.name}
           </Text>
-          {/* Show parent directory for context on files */}
-          {!isDirectory && (
-            <Text
-              fontSize={0.1}
-              color={explored ? '#8899aa' : '#556677'}
-              anchorX="center"
-              anchorY="top"
-              position={[0, -0.04, 0]}
-              outlineWidth={0.01}
-              outlineColor="#000000"
-            >
-              {cell.node.path.split('/').slice(-2, -1)[0]}
-            </Text>
-          )}
         </Billboard>
       )}
     </group>
