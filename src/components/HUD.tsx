@@ -1,31 +1,39 @@
 import type { AgentEvent } from '../types'
 import type { TokenUsage } from '../hooks/useTokenUsage'
 
+// Format large token numbers (e.g., 1234567 -> "1.2M")
+function formatTokens(tokens: number): string {
+  if (tokens >= 1000000) {
+    return `${(tokens / 1000000).toFixed(1)}M`
+  }
+  if (tokens >= 1000) {
+    return `${(tokens / 1000).toFixed(1)}K`
+  }
+  return tokens.toString()
+}
+
 interface HUDProps {
   connected: boolean
-  exploredCount: number
   totalCount: number
   eventHistory: AgentEvent[]
   onStartDemo: () => void
   onStopDemo: () => void
   isDemoRunning: boolean
   tokenUsage: TokenUsage
+  onSetCostAlert: (threshold: number | null) => void
 }
 
 export default function HUD({
   connected,
-  exploredCount,
   totalCount,
   eventHistory,
   onStartDemo,
   onStopDemo,
   isDemoRunning,
   tokenUsage,
+  onSetCostAlert,
 }: HUDProps) {
   const recentEvents = eventHistory.slice(-8).reverse()
-  const tokenUsagePercent = tokenUsage.tokensLimit > 0
-    ? (tokenUsage.tokensUsed / tokenUsage.tokensLimit) * 100
-    : 0
 
   return (
     <div style={{
@@ -93,115 +101,164 @@ export default function HUD({
           display: 'flex',
           gap: 12,
         }}>
-          {/* Explored Files */}
+          {/* File Count */}
           <div style={{
             background: 'rgba(0, 0, 0, 0.7)',
             border: '1px solid #00ff88',
             padding: '12px 16px',
             borderRadius: 4,
           }}>
-            <div style={{ fontSize: 12, opacity: 0.7, marginBottom: 4 }}>EXPLORED</div>
+            <div style={{ fontSize: 12, opacity: 0.7, marginBottom: 4 }}>FILES</div>
             <div style={{ fontSize: 20, fontWeight: 'bold' }}>
-              {exploredCount} <span style={{ opacity: 0.5, fontSize: 14 }}>/ {totalCount}</span>
-            </div>
-            <div style={{
-              marginTop: 8,
-              height: 4,
-              background: '#1a1a2e',
-              borderRadius: 2,
-              overflow: 'hidden',
-            }}>
-              <div style={{
-                height: '100%',
-                width: `${totalCount > 0 ? (exploredCount / totalCount) * 100 : 0}%`,
-                background: 'linear-gradient(90deg, #00ff88, #00aa55)',
-                transition: 'width 0.3s ease',
-              }} />
+              {totalCount}
             </div>
           </div>
 
-          {/* Token Usage */}
+          {/* Token Usage - Redesigned */}
           <div style={{
-            background: 'rgba(0, 0, 0, 0.7)',
-            border: '1px solid #00ff88',
+            background: tokenUsage.isOverBudget
+              ? 'rgba(255, 0, 68, 0.2)'
+              : 'rgba(0, 0, 0, 0.7)',
+            border: `1px solid ${tokenUsage.isOverBudget ? '#ff0044' : '#00ff88'}`,
             padding: '12px 16px',
             borderRadius: 4,
-            minWidth: 240,
+            minWidth: 200,
           }}>
+            {/* Header */}
             <div style={{
               fontSize: 12,
               opacity: 0.7,
-              marginBottom: 4,
+              marginBottom: 8,
               display: 'flex',
               justifyContent: 'space-between',
               alignItems: 'center',
             }}>
-              <span>TOKEN USAGE</span>
-              {tokenUsage.isRealData && (
-                <span style={{
-                  fontSize: 9,
-                  background: '#00ff88',
-                  color: '#000',
-                  padding: '2px 6px',
-                  borderRadius: 3,
-                  fontWeight: 'bold',
-                }}>LIVE</span>
-              )}
+              <span>SESSION COST</span>
+              <div style={{ display: 'flex', gap: 6 }}>
+                {tokenUsage.isOverBudget && (
+                  <span style={{
+                    fontSize: 9,
+                    background: '#ff0044',
+                    color: '#fff',
+                    padding: '2px 6px',
+                    borderRadius: 3,
+                    fontWeight: 'bold',
+                    animation: 'pulse 1s infinite',
+                  }}>ALERT</span>
+                )}
+                {tokenUsage.isRealData && (
+                  <span style={{
+                    fontSize: 9,
+                    background: '#00ff88',
+                    color: '#000',
+                    padding: '2px 6px',
+                    borderRadius: 3,
+                    fontWeight: 'bold',
+                  }}>LIVE</span>
+                )}
+              </div>
             </div>
+
             {/* Cost display */}
             <div style={{
-              fontSize: 24,
+              fontSize: 28,
               fontWeight: 'bold',
-              color: tokenUsage.costUSD > 1 ? '#ff8800' : '#00ff88',
+              color: tokenUsage.isOverBudget
+                ? '#ff0044'
+                : tokenUsage.costUSD > 1
+                  ? '#ff8800'
+                  : '#00ff88',
+              marginBottom: 12,
             }}>
-              ${tokenUsage.costUSD.toFixed(4)}
+              ${tokenUsage.costUSD.toFixed(2)}
+              {tokenUsage.costAlert && (
+                <span style={{
+                  fontSize: 12,
+                  opacity: 0.6,
+                  marginLeft: 8,
+                  fontWeight: 'normal',
+                }}>
+                  / ${tokenUsage.costAlert.toFixed(2)}
+                </span>
+              )}
             </div>
-            {/* Token breakdown */}
+
+            {/* Token breakdown - visual bar */}
+            <div style={{ marginBottom: 8 }}>
+              <div style={{
+                display: 'flex',
+                height: 8,
+                borderRadius: 4,
+                overflow: 'hidden',
+                background: '#1a1a2e',
+              }}>
+                {tokenUsage.totalTokens > 0 && (
+                  <>
+                    <div
+                      style={{
+                        width: `${(tokenUsage.inputTokens / tokenUsage.totalTokens) * 100}%`,
+                        background: '#4488ff',
+                      }}
+                      title={`Input: ${tokenUsage.inputTokens.toLocaleString()}`}
+                    />
+                    <div
+                      style={{
+                        width: `${(tokenUsage.outputTokens / tokenUsage.totalTokens) * 100}%`,
+                        background: '#ff8844',
+                      }}
+                      title={`Output: ${tokenUsage.outputTokens.toLocaleString()}`}
+                    />
+                    <div
+                      style={{
+                        width: `${(tokenUsage.cacheReadTokens / tokenUsage.totalTokens) * 100}%`,
+                        background: '#44ff88',
+                      }}
+                      title={`Cache Read: ${tokenUsage.cacheReadTokens.toLocaleString()}`}
+                    />
+                    <div
+                      style={{
+                        width: `${(tokenUsage.cacheCreationTokens / tokenUsage.totalTokens) * 100}%`,
+                        background: '#aa44ff',
+                      }}
+                      title={`Cache Write: ${tokenUsage.cacheCreationTokens.toLocaleString()}`}
+                    />
+                  </>
+                )}
+              </div>
+            </div>
+
+            {/* Legend */}
             <div style={{
-              marginTop: 8,
-              display: 'grid',
-              gridTemplateColumns: '1fr 1fr',
-              gap: '4px 12px',
+              display: 'flex',
+              flexWrap: 'wrap',
+              gap: '6px 12px',
               fontSize: 10,
             }}>
-              <div style={{ opacity: 0.7 }}>
-                <span style={{ color: '#4488ff' }}>IN:</span> {tokenUsage.inputTokens.toLocaleString()}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                <div style={{ width: 8, height: 8, borderRadius: 2, background: '#4488ff' }} />
+                <span style={{ opacity: 0.8 }}>In {formatTokens(tokenUsage.inputTokens)}</span>
               </div>
-              <div style={{ opacity: 0.7 }}>
-                <span style={{ color: '#ff8844' }}>OUT:</span> {tokenUsage.outputTokens.toLocaleString()}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                <div style={{ width: 8, height: 8, borderRadius: 2, background: '#ff8844' }} />
+                <span style={{ opacity: 0.8 }}>Out {formatTokens(tokenUsage.outputTokens)}</span>
               </div>
-              <div style={{ opacity: 0.7 }}>
-                <span style={{ color: '#44ff88' }}>CACHE R:</span> {tokenUsage.cacheReadTokens.toLocaleString()}
-              </div>
-              <div style={{ opacity: 0.7 }}>
-                <span style={{ color: '#ff44ff' }}>CACHE W:</span> {tokenUsage.cacheCreationTokens.toLocaleString()}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                <div style={{ width: 8, height: 8, borderRadius: 2, background: '#44ff88' }} />
+                <span style={{ opacity: 0.8 }}>Cached {formatTokens(tokenUsage.cacheReadTokens)}</span>
               </div>
             </div>
-            {/* Total tokens bar */}
+
+            {/* Total */}
             <div style={{
               marginTop: 8,
+              paddingTop: 8,
+              borderTop: '1px solid rgba(255,255,255,0.1)',
               fontSize: 11,
-              opacity: 0.9,
+              display: 'flex',
+              justifyContent: 'space-between',
             }}>
-              Total: {tokenUsage.totalTokens.toLocaleString()} tokens
-            </div>
-            <div style={{
-              marginTop: 4,
-              height: 4,
-              background: '#1a1a2e',
-              borderRadius: 2,
-              overflow: 'hidden',
-            }}>
-              <div style={{
-                height: '100%',
-                width: `${Math.min(tokenUsagePercent, 100)}%`,
-                background: tokenUsagePercent > 90
-                  ? 'linear-gradient(90deg, #ff0044, #ff4400)'
-                  : tokenUsagePercent > 70
-                    ? 'linear-gradient(90deg, #ff8800, #ff4400)'
-                    : 'linear-gradient(90deg, #00ff88, #00aa55)',
-                transition: 'width 0.3s ease, background 0.3s ease',
-              }} />
+              <span style={{ opacity: 0.6 }}>Total</span>
+              <span>{formatTokens(tokenUsage.totalTokens)} tokens</span>
             </div>
           </div>
         </div>
@@ -260,25 +317,74 @@ export default function HUD({
         padding: '12px 16px',
         borderRadius: 4,
         pointerEvents: 'auto',
+        minWidth: 180,
       }}>
         <div style={{ fontSize: 12, opacity: 0.7, marginBottom: 8 }}>CONTROLS</div>
-        <button
-          onClick={isDemoRunning ? onStopDemo : onStartDemo}
-          style={{
-            background: isDemoRunning ? '#ff0044' : '#00ff88',
-            border: 'none',
-            color: isDemoRunning ? '#ffffff' : '#000000',
-            padding: '8px 16px',
-            borderRadius: 4,
-            cursor: 'pointer',
-            fontFamily: 'monospace',
-            fontWeight: 'bold',
-            fontSize: 12,
-          }}
-        >
-          {isDemoRunning ? 'STOP DEMO' : 'START DEMO'}
-        </button>
-        <div style={{ fontSize: 10, opacity: 0.5, marginTop: 8 }}>
+
+        {/* Demo button - only show when not connected */}
+        {!connected && (
+          <button
+            onClick={isDemoRunning ? onStopDemo : onStartDemo}
+            style={{
+              background: isDemoRunning ? '#ff0044' : '#00ff88',
+              border: 'none',
+              color: isDemoRunning ? '#ffffff' : '#000000',
+              padding: '8px 16px',
+              borderRadius: 4,
+              cursor: 'pointer',
+              fontFamily: 'monospace',
+              fontWeight: 'bold',
+              fontSize: 12,
+              width: '100%',
+              marginBottom: 12,
+            }}
+          >
+            {isDemoRunning ? 'STOP DEMO' : 'START DEMO'}
+          </button>
+        )}
+
+        {/* Cost Alert Settings */}
+        <div style={{ marginTop: 12 }}>
+          <div style={{ fontSize: 11, opacity: 0.7, marginBottom: 6 }}>COST ALERT</div>
+          <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+            {[1, 5, 10].map(amount => (
+              <button
+                key={amount}
+                onClick={() => onSetCostAlert(amount)}
+                style={{
+                  background: tokenUsage.costAlert === amount ? '#00ff88' : '#2a2a4e',
+                  border: 'none',
+                  color: tokenUsage.costAlert === amount ? '#000' : '#00ff88',
+                  padding: '4px 8px',
+                  borderRadius: 3,
+                  cursor: 'pointer',
+                  fontFamily: 'monospace',
+                  fontSize: 10,
+                  fontWeight: tokenUsage.costAlert === amount ? 'bold' : 'normal',
+                }}
+              >
+                ${amount}
+              </button>
+            ))}
+            <button
+              onClick={() => onSetCostAlert(null)}
+              style={{
+                background: tokenUsage.costAlert === null ? '#00ff88' : '#2a2a4e',
+                border: 'none',
+                color: tokenUsage.costAlert === null ? '#000' : '#666',
+                padding: '4px 8px',
+                borderRadius: 3,
+                cursor: 'pointer',
+                fontFamily: 'monospace',
+                fontSize: 10,
+              }}
+            >
+              OFF
+            </button>
+          </div>
+        </div>
+
+        <div style={{ fontSize: 10, opacity: 0.5, marginTop: 10 }}>
           Drag to rotate • Scroll to zoom
         </div>
       </div>

@@ -2,18 +2,25 @@ import { useState, useCallback, useEffect } from 'react'
 import type { AgentEvent } from '../types'
 
 export interface TokenUsage {
-  // Totals
-  inputTokens: number
-  outputTokens: number
-  cacheReadTokens: number
-  cacheCreationTokens: number
+  // Simplified totals
+  inputTokens: number      // Tokens sent to Claude (your prompts + context)
+  outputTokens: number     // Tokens Claude generated (responses)
+  cacheReadTokens: number  // Tokens read from cache (cheaper)
+  cacheCreationTokens: number // Tokens written to cache
   totalTokens: number
+
   // Cost
   costUSD: number
+
+  // Alerts
+  costAlert: number | null  // Alert threshold in USD
+  isOverBudget: boolean
+
   // Legacy fields for HUD compatibility
   tokensUsed: number
   tokensRemaining: number
   tokensLimit: number
+
   // Metadata
   lastUpdated: number
   isRealData: boolean
@@ -29,6 +36,8 @@ const initialUsage: TokenUsage = {
   cacheCreationTokens: 0,
   totalTokens: 0,
   costUSD: 0,
+  costAlert: null,
+  isOverBudget: false,
   tokensUsed: 0,
   tokensRemaining: DEFAULT_TOKEN_LIMIT,
   tokensLimit: DEFAULT_TOKEN_LIMIT,
@@ -45,19 +54,21 @@ export function useTokenUsage() {
       const { inputTokens, outputTokens, cacheReadInputTokens, cacheCreationInputTokens, totalCostUSD } = event.usage
       const totalTokens = inputTokens + outputTokens + cacheReadInputTokens + cacheCreationInputTokens
 
-      setTokenUsage({
+      setTokenUsage(prev => ({
         inputTokens,
         outputTokens,
         cacheReadTokens: cacheReadInputTokens,
         cacheCreationTokens: cacheCreationInputTokens,
         totalTokens,
         costUSD: totalCostUSD,
+        costAlert: prev.costAlert,
+        isOverBudget: prev.costAlert !== null && totalCostUSD >= prev.costAlert,
         tokensUsed: totalTokens,
         tokensRemaining: Math.max(0, DEFAULT_TOKEN_LIMIT - totalTokens),
         tokensLimit: DEFAULT_TOKEN_LIMIT,
         lastUpdated: Date.now(),
         isRealData: true,
-      })
+      }))
       return
     }
 
@@ -71,6 +82,7 @@ export function useTokenUsage() {
         const newCacheRead = prev.cacheReadTokens + cacheReadInputTokens
         const newCacheCreation = prev.cacheCreationTokens + cacheCreationInputTokens
         const totalTokens = newInput + newOutput + newCacheRead + newCacheCreation
+        const newCost = prev.costUSD + totalCostUSD
 
         return {
           inputTokens: newInput,
@@ -78,7 +90,9 @@ export function useTokenUsage() {
           cacheReadTokens: newCacheRead,
           cacheCreationTokens: newCacheCreation,
           totalTokens,
-          costUSD: prev.costUSD + totalCostUSD,
+          costUSD: newCost,
+          costAlert: prev.costAlert,
+          isOverBudget: prev.costAlert !== null && newCost >= prev.costAlert,
           tokensUsed: totalTokens,
           tokensRemaining: Math.max(0, DEFAULT_TOKEN_LIMIT - totalTokens),
           tokensLimit: DEFAULT_TOKEN_LIMIT,
@@ -116,22 +130,25 @@ export function useTokenUsage() {
         if (data.usage) {
           const { input_tokens, output_tokens, cache_read_input_tokens, cache_creation_input_tokens } = data.usage
           const totalTokens = input_tokens + output_tokens + (cache_read_input_tokens || 0) + (cache_creation_input_tokens || 0)
+          const newCost = data.total_cost_usd || 0
 
           // Only update if there's actual data
-          if (totalTokens > 0 || data.total_cost_usd > 0) {
-            setTokenUsage({
+          if (totalTokens > 0 || newCost > 0) {
+            setTokenUsage(prev => ({
               inputTokens: input_tokens,
               outputTokens: output_tokens,
               cacheReadTokens: cache_read_input_tokens || 0,
               cacheCreationTokens: cache_creation_input_tokens || 0,
               totalTokens,
-              costUSD: data.total_cost_usd || 0,
+              costUSD: newCost,
+              costAlert: prev.costAlert,
+              isOverBudget: prev.costAlert !== null && newCost >= prev.costAlert,
               tokensUsed: totalTokens,
               tokensRemaining: Math.max(0, DEFAULT_TOKEN_LIMIT - totalTokens),
               tokensLimit: DEFAULT_TOKEN_LIMIT,
               lastUpdated: Date.now(),
               isRealData: true,
-            })
+            }))
           }
         }
       }
@@ -164,12 +181,22 @@ export function useTokenUsage() {
     }))
   }, [])
 
+  // Set cost alert threshold
+  const setAlertThreshold = useCallback((threshold: number | null) => {
+    setTokenUsage(prev => ({
+      ...prev,
+      costAlert: threshold,
+      isOverBudget: threshold !== null && prev.costUSD >= threshold,
+    }))
+  }, [])
+
   return {
     tokenUsage,
     handleEvent,
     fetchUsage,
     reset,
     setUsage,
+    setAlertThreshold,
   }
 }
 

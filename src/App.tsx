@@ -72,7 +72,7 @@ function App() {
 
   const { units, handleEvent: handleUnitEvent } = useUnits(getCellByPath)
 
-  const { tokenUsage, handleEvent: handleTokenEvent, fetchUsage } = useTokenUsage()
+  const { tokenUsage, handleEvent: handleTokenEvent, fetchUsage, setAlertThreshold } = useTokenUsage()
 
   // Handle events from WebSocket
   const handleEvent = useCallback((event: AgentEvent & { basePath?: string; files?: FileEntry[] }) => {
@@ -156,13 +156,13 @@ function App() {
       />
       <HUD
         connected={wsConnected}
-        exploredCount={exploredPaths.size}
         totalCount={grid.length}
         eventHistory={eventHistory}
         onStartDemo={demoStream.start}
         onStopDemo={demoStream.stop}
         isDemoRunning={demoStream.isRunning}
         tokenUsage={tokenUsage}
+        onSetCostAlert={setAlertThreshold}
       />
       {selectedFile && (
         <FileModal
