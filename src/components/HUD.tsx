@@ -21,6 +21,7 @@ interface HUDProps {
   isDemoRunning: boolean
   tokenUsage: TokenUsage
   onSetCostAlert: (threshold: number | null) => void
+  terminalOpen?: boolean
 }
 
 export default function HUD({
@@ -32,6 +33,7 @@ export default function HUD({
   isDemoRunning,
   tokenUsage,
   onSetCostAlert,
+  terminalOpen = false,
 }: HUDProps) {
   const recentEvents = eventHistory.slice(-8).reverse()
 
@@ -267,13 +269,14 @@ export default function HUD({
       {/* Bottom left - Event log */}
       <div style={{
         position: 'absolute',
-        bottom: 20,
+        bottom: terminalOpen ? 'calc(40% + 20px)' : 20,
         left: 20,
         width: 320,
         background: 'rgba(0, 0, 0, 0.7)',
         border: '1px solid #00ff88',
         padding: '12px 16px',
         borderRadius: 4,
+        transition: 'bottom 0.2s ease-out',
       }}>
         <div style={{ fontSize: 12, opacity: 0.7, marginBottom: 8 }}>EVENT LOG</div>
         <div style={{ maxHeight: 200, overflow: 'hidden' }}>
@@ -310,7 +313,7 @@ export default function HUD({
       {/* Bottom right - Controls */}
       <div style={{
         position: 'absolute',
-        bottom: 20,
+        bottom: terminalOpen ? 'calc(40% + 20px)' : 20,
         right: 20,
         background: 'rgba(0, 0, 0, 0.7)',
         border: '1px solid #00ff88',
@@ -318,6 +321,7 @@ export default function HUD({
         borderRadius: 4,
         pointerEvents: 'auto',
         minWidth: 180,
+        transition: 'bottom 0.2s ease-out',
       }}>
         <div style={{ fontSize: 12, opacity: 0.7, marginBottom: 8 }}>CONTROLS</div>
 

@@ -71,6 +71,25 @@ function countDescendants(node: FileNode): number {
   return 1 + node.children.reduce((sum, child) => sum + countDescendants(child), 0)
 }
 
+// Find directories with more than threshold descendants
+function findLargeDirectories(node: FileNode, threshold: number): string[] {
+  const largeDirs: string[] = []
+
+  function traverse(n: FileNode) {
+    if (n.type === 'directory' && n.children && n.children.length > 0) {
+      const count = countDescendants(n) - 1 // subtract 1 to not count self
+      if (count >= threshold) {
+        largeDirs.push(n.path)
+      }
+      // Still traverse children to find nested large dirs
+      n.children.forEach(traverse)
+    }
+  }
+
+  traverse(node)
+  return largeDirs
+}
+
 // Convert tree to grid layout using a radial tree structure
 function treeToGrid(root: FileNode, maxDepth = 6): GridCell[] {
   const cells: GridCell[] = []
@@ -169,7 +188,8 @@ export function useCodebaseState(basePath: string) {
   const [exploredPaths, setExploredPaths] = useState<Set<string>>(new Set())
 
   // Initialize the codebase from a list of file entries
-  const initializeCodebase = useCallback((entries: FileEntry[] | string[]) => {
+  // Returns paths of directories with 100+ items (for auto-hiding)
+  const initializeCodebase = useCallback((entries: FileEntry[] | string[]): string[] => {
     // Handle both old format (string[]) and new format (FileEntry[])
     const fileEntries: FileEntry[] = entries.length > 0 && typeof entries[0] === 'string'
       ? (entries as string[]).map(p => ({ path: p, type: 'file' as const }))
@@ -179,6 +199,9 @@ export function useCodebaseState(basePath: string) {
     const newGrid = treeToGrid(tree)
     setFileTree(tree)
     setGrid(newGrid)
+
+    // Find and return large directories (100+ items)
+    return findLargeDirectories(tree, 100)
   }, [basePath])
 
   // Handle an agent event - update explored state

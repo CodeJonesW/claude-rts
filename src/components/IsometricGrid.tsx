@@ -5,7 +5,9 @@ import type { GridCell } from '../types'
 interface IsometricGridProps {
   cells: GridCell[]
   exploredPaths: Set<string>
+  hiddenPaths?: Set<string>
   onFileClick?: (path: string) => void
+  onContextMenu?: (e: { x: number; y: number; path: string; isDirectory: boolean }) => void
 }
 
 // Convert grid coordinates to 3D world position
@@ -53,11 +55,15 @@ function getFileColor(name: string | undefined, isDirectory: boolean): string {
 function FileBuilding({
   cell,
   explored,
+  isHidden,
   onFileClick,
+  onContextMenu,
 }: {
   cell: GridCell
   explored: boolean
+  isHidden?: boolean
   onFileClick?: (path: string) => void
+  onContextMenu?: (e: { x: number; y: number; path: string; isDirectory: boolean }) => void
 }) {
   const [x, y, z] = gridToWorld(cell.x, cell.y, cell.elevation)
   const isDirectory = cell.node?.type === 'directory'
@@ -83,12 +89,24 @@ function FileBuilding({
     }
   }
 
+  // Handle right-click for context menu
+  const handleRightClick = (e: { nativeEvent: MouseEvent }) => {
+    if (cell.node?.path && onContextMenu) {
+      e.nativeEvent.preventDefault()
+      e.nativeEvent.stopPropagation()
+      onContextMenu({
+        x: e.nativeEvent.clientX,
+        y: e.nativeEvent.clientY,
+        path: cell.node.path,
+        isDirectory: isDirectory,
+      })
+    }
+  }
+
   // Handle hover
   const handlePointerOver = () => {
-    if (!isDirectory) {
-      setHovered(true)
-      document.body.style.cursor = 'pointer'
-    }
+    setHovered(true)
+    document.body.style.cursor = 'pointer'
   }
 
   const handlePointerOut = () => {
@@ -115,6 +133,7 @@ function FileBuilding({
         castShadow
         receiveShadow
         onClick={handleClick}
+        onContextMenu={handleRightClick}
         onPointerOver={handlePointerOver}
         onPointerOut={handlePointerOut}
       >
@@ -146,8 +165,8 @@ function FileBuilding({
           <mesh position={[0, height + 0.2, 0]}>
             <cylinderGeometry args={[0.04, 0.04, 0.25]} />
             <meshStandardMaterial
-              color="#00ff88"
-              emissive="#00ff88"
+              color={isHidden ? '#ff8844' : '#00ff88'}
+              emissive={isHidden ? '#ff8844' : '#00ff88'}
               emissiveIntensity={explored ? 0.8 : 0.4}
             />
           </mesh>
@@ -155,8 +174,8 @@ function FileBuilding({
           <mesh position={[0, height + 0.38, 0]}>
             <sphereGeometry args={[0.08, 8, 8]} />
             <meshStandardMaterial
-              color="#00ff88"
-              emissive="#00ff88"
+              color={isHidden ? '#ff8844' : '#00ff88'}
+              emissive={isHidden ? '#ff8844' : '#00ff88'}
               emissiveIntensity={1.5}
             />
           </mesh>
@@ -216,7 +235,7 @@ function ConnectionLine({
   )
 }
 
-export default function IsometricGrid({ cells, exploredPaths, onFileClick }: IsometricGridProps) {
+export default function IsometricGrid({ cells, exploredPaths, hiddenPaths, onFileClick, onContextMenu }: IsometricGridProps) {
   // Calculate bounds for ground plane (radial layout is centered at origin)
   const groundSize = useMemo(() => {
     if (cells.length === 0) return 20
@@ -303,7 +322,9 @@ export default function IsometricGrid({ cells, exploredPaths, onFileClick }: Iso
           key={cell.node?.path || `${cell.x}-${cell.y}`}
           cell={cell}
           explored={cell.node ? exploredPaths.has(cell.node.path) : false}
+          isHidden={cell.node ? hiddenPaths?.has(cell.node.path) : false}
           onFileClick={onFileClick}
+          onContextMenu={onContextMenu}
         />
       ))}
     </group>
