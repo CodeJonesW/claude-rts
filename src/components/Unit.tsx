@@ -1,4 +1,4 @@
-import { useRef, useMemo } from 'react'
+import { useRef } from 'react'
 import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
 import type { Unit as UnitType } from '../types'
@@ -9,162 +9,175 @@ interface UnitProps {
 }
 
 export default function Unit({ unit }: UnitProps) {
-  const meshRef = useRef<THREE.Group>(null)
+  const groupRef = useRef<THREE.Group>(null)
+  const screenRef = useRef<THREE.Mesh>(null)
   const startTime = useRef(Date.now())
 
-  // Unit appearance based on type
-  const config = useMemo(() => {
-    switch (unit.type) {
-      case 'scout':
-        return {
-          color: '#00ff88',
-          emissive: '#00ff88',
-          size: 0.12,
-          shape: 'cone' as const,
-        }
-      case 'builder':
-        return {
-          color: '#ff8800',
-          emissive: '#ff8800',
-          size: 0.15,
-          shape: 'box' as const,
-        }
-      case 'searcher':
-        return {
-          color: '#8800ff',
-          emissive: '#8800ff',
-          size: 0.1,
-          shape: 'sphere' as const,
-        }
-      case 'debugger':
-        return {
-          color: '#ff0044',
-          emissive: '#ff0044',
-          size: 0.12,
-          shape: 'octahedron' as const,
-        }
-      default:
-        return {
-          color: '#ffffff',
-          emissive: '#ffffff',
-          size: 0.1,
-          shape: 'sphere' as const,
-        }
-    }
-  }, [unit.type])
+  // Floating height above the grid
+  const FLOAT_HEIGHT = 3
 
   // Animate position
   useFrame(() => {
-    if (!meshRef.current) return
+    if (!groupRef.current) return
 
     const elapsed = (Date.now() - startTime.current) / 1000
 
-    // Calculate current position (lerp from start to target)
-    const startPos = gridToWorld(0, 0, 0)
-    const targetPos = unit.targetPosition
-      ? gridToWorld(unit.targetPosition.x, unit.targetPosition.y, 0.3)
-      : startPos
+    // Calculate target position above the file being accessed
+    let targetX = 0
+    let targetZ = 0
 
-    const travelDuration = Math.sqrt(
-      (unit.targetPosition?.x || 0) ** 2 + (unit.targetPosition?.y || 0) ** 2
-    ) * 0.1 + 0.5
+    if (unit.targetPosition) {
+      const worldPos = gridToWorld(unit.targetPosition.x, unit.targetPosition.y, 0)
+      targetX = worldPos[0]
+      targetZ = worldPos[2]
+    }
 
-    let t = Math.min(elapsed / travelDuration, 1)
-    // Ease out cubic
-    t = 1 - Math.pow(1 - t, 3)
+    // Smooth movement towards target
+    const currentPos = groupRef.current.position
+    const lerpSpeed = 0.03
+    const newX = currentPos.x + (targetX - currentPos.x) * lerpSpeed
+    const newZ = currentPos.z + (targetZ - currentPos.z) * lerpSpeed
 
-    const currentX = startPos[0] + (targetPos[0] - startPos[0]) * t
-    const currentZ = startPos[2] + (targetPos[2] - startPos[2]) * t
+    // Gentle floating motion
+    const floatOffset = Math.sin(elapsed * 1.5) * 0.15
+    const newY = FLOAT_HEIGHT + floatOffset
 
-    // Hover height with bobbing
-    const baseHeight = 0.3
-    const bobHeight = Math.sin(elapsed * 4) * 0.05
-    const currentY = baseHeight + bobHeight + (unit.state === 'working' ? 0.1 : 0)
+    groupRef.current.position.set(newX, newY, newZ)
 
-    meshRef.current.position.set(currentX, currentY, currentZ)
+    // Gentle rotation/tilt based on movement
+    const moveX = targetX - currentPos.x
+    const moveZ = targetZ - currentPos.z
+    groupRef.current.rotation.z = -moveX * 0.02
+    groupRef.current.rotation.x = moveZ * 0.02
 
-    // Rotate while moving
-    if (unit.state === 'moving') {
-      meshRef.current.rotation.y += 0.05
-    } else if (unit.state === 'working') {
-      meshRef.current.rotation.y += 0.1
-      meshRef.current.rotation.x = Math.sin(elapsed * 8) * 0.2
+    // Screen flicker effect when working
+    if (screenRef.current) {
+      const material = screenRef.current.material as THREE.MeshStandardMaterial
+      if (unit.state === 'working') {
+        material.emissiveIntensity = 1.5 + Math.sin(elapsed * 20) * 0.5
+      } else {
+        material.emissiveIntensity = 1.0 + Math.sin(elapsed * 3) * 0.2
+      }
     }
   })
 
-  const pulseIntensity = unit.state === 'working' ? 0.8 : 0.4
+  // Screen color based on state
+  const screenColor = unit.state === 'working' ? '#00ffaa' : '#00ff88'
+  const frameColor = '#1a1a2a'
 
   return (
-    <group ref={meshRef}>
-      {/* Main body */}
-      {config.shape === 'cone' && (
-        <mesh rotation={[0, 0, Math.PI]}>
-          <coneGeometry args={[config.size, config.size * 2, 6]} />
-          <meshStandardMaterial
-            color={config.color}
-            emissive={config.emissive}
-            emissiveIntensity={pulseIntensity}
-            roughness={0.3}
-            metalness={0.7}
-          />
-        </mesh>
-      )}
-      {config.shape === 'box' && (
-        <mesh>
-          <boxGeometry args={[config.size, config.size, config.size]} />
-          <meshStandardMaterial
-            color={config.color}
-            emissive={config.emissive}
-            emissiveIntensity={pulseIntensity}
-            roughness={0.3}
-            metalness={0.7}
-          />
-        </mesh>
-      )}
-      {config.shape === 'sphere' && (
-        <mesh>
-          <sphereGeometry args={[config.size, 16, 16]} />
-          <meshStandardMaterial
-            color={config.color}
-            emissive={config.emissive}
-            emissiveIntensity={pulseIntensity}
-            roughness={0.3}
-            metalness={0.7}
-          />
-        </mesh>
-      )}
-      {config.shape === 'octahedron' && (
-        <mesh>
-          <octahedronGeometry args={[config.size]} />
-          <meshStandardMaterial
-            color={config.color}
-            emissive={config.emissive}
-            emissiveIntensity={pulseIntensity}
-            roughness={0.3}
-            metalness={0.7}
-          />
-        </mesh>
-      )}
+    <group ref={groupRef} position={[0, FLOAT_HEIGHT, 0]}>
+      {/* Main monitor frame */}
+      <mesh castShadow>
+        <boxGeometry args={[1.8, 1.2, 0.15]} />
+        <meshStandardMaterial
+          color={frameColor}
+          roughness={0.3}
+          metalness={0.8}
+        />
+      </mesh>
 
-      {/* Point light for glow effect */}
+      {/* Screen bezel */}
+      <mesh position={[0, 0, 0.06]}>
+        <boxGeometry args={[1.6, 1.0, 0.05]} />
+        <meshStandardMaterial
+          color="#0a0a15"
+          roughness={0.5}
+          metalness={0.5}
+        />
+      </mesh>
+
+      {/* Screen display */}
+      <mesh ref={screenRef} position={[0, 0, 0.09]}>
+        <planeGeometry args={[1.4, 0.85]} />
+        <meshStandardMaterial
+          color={screenColor}
+          emissive={screenColor}
+          emissiveIntensity={1.2}
+          roughness={0.1}
+        />
+      </mesh>
+
+      {/* Screen scan line effect */}
+      <mesh position={[0, 0, 0.095]}>
+        <planeGeometry args={[1.4, 0.85]} />
+        <meshStandardMaterial
+          color="#000000"
+          transparent
+          opacity={0.1}
+        />
+      </mesh>
+
+      {/* Monitor stand base (floating) */}
+      <mesh position={[0, -0.75, 0]}>
+        <cylinderGeometry args={[0.15, 0.2, 0.3, 8]} />
+        <meshStandardMaterial
+          color={frameColor}
+          roughness={0.3}
+          metalness={0.8}
+        />
+      </mesh>
+
+      {/* Antenna */}
+      <mesh position={[0.7, 0.7, 0]}>
+        <cylinderGeometry args={[0.02, 0.02, 0.3]} />
+        <meshStandardMaterial
+          color="#00ff88"
+          emissive="#00ff88"
+          emissiveIntensity={0.8}
+        />
+      </mesh>
+
+      {/* Antenna tip */}
+      <mesh position={[0.7, 0.88, 0]}>
+        <sphereGeometry args={[0.05, 8, 8]} />
+        <meshStandardMaterial
+          color="#00ff88"
+          emissive="#00ff88"
+          emissiveIntensity={1.5}
+        />
+      </mesh>
+
+      {/* Status LED */}
+      <mesh position={[-0.75, -0.5, 0.08]}>
+        <sphereGeometry args={[0.04, 8, 8]} />
+        <meshStandardMaterial
+          color={unit.state === 'working' ? '#ff8800' : '#00ff88'}
+          emissive={unit.state === 'working' ? '#ff8800' : '#00ff88'}
+          emissiveIntensity={2}
+        />
+      </mesh>
+
+      {/* Glow light from screen */}
       <pointLight
-        color={config.emissive}
-        intensity={unit.state === 'working' ? 2 : 0.5}
-        distance={1.5}
-        decay={2}
+        position={[0, 0, 1]}
+        intensity={unit.state === 'working' ? 3 : 1.5}
+        distance={8}
+        color={screenColor}
       />
 
-      {/* Trail particles when moving */}
-      {unit.state === 'moving' && (
+      {/* Downward light beam when working */}
+      {unit.state === 'working' && (
         <>
-          <mesh position={[0, -0.1, 0]} scale={0.5}>
-            <sphereGeometry args={[config.size * 0.5, 8, 8]} />
+          <spotLight
+            position={[0, -0.5, 0]}
+            angle={0.3}
+            penumbra={0.5}
+            intensity={5}
+            distance={10}
+            color="#00ff88"
+            target-position={[0, -10, 0]}
+          />
+          {/* Light beam visual */}
+          <mesh position={[0, -3, 0]}>
+            <cylinderGeometry args={[0.05, 0.8, 5, 8, 1, true]} />
             <meshStandardMaterial
-              color={config.color}
-              emissive={config.emissive}
-              emissiveIntensity={0.2}
+              color="#00ff88"
+              emissive="#00ff88"
+              emissiveIntensity={0.5}
               transparent
-              opacity={0.5}
+              opacity={0.15}
+              side={THREE.DoubleSide}
             />
           </mesh>
         </>

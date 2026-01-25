@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import type { AgentEvent } from '../types'
 
 export interface TokenUsage {
@@ -117,25 +117,39 @@ export function useTokenUsage() {
           const { input_tokens, output_tokens, cache_read_input_tokens, cache_creation_input_tokens } = data.usage
           const totalTokens = input_tokens + output_tokens + (cache_read_input_tokens || 0) + (cache_creation_input_tokens || 0)
 
-          setTokenUsage({
-            inputTokens: input_tokens,
-            outputTokens: output_tokens,
-            cacheReadTokens: cache_read_input_tokens || 0,
-            cacheCreationTokens: cache_creation_input_tokens || 0,
-            totalTokens,
-            costUSD: data.total_cost_usd || 0,
-            tokensUsed: totalTokens,
-            tokensRemaining: Math.max(0, DEFAULT_TOKEN_LIMIT - totalTokens),
-            tokensLimit: DEFAULT_TOKEN_LIMIT,
-            lastUpdated: Date.now(),
-            isRealData: true,
-          })
+          // Only update if there's actual data
+          if (totalTokens > 0 || data.total_cost_usd > 0) {
+            setTokenUsage({
+              inputTokens: input_tokens,
+              outputTokens: output_tokens,
+              cacheReadTokens: cache_read_input_tokens || 0,
+              cacheCreationTokens: cache_creation_input_tokens || 0,
+              totalTokens,
+              costUSD: data.total_cost_usd || 0,
+              tokensUsed: totalTokens,
+              tokensRemaining: Math.max(0, DEFAULT_TOKEN_LIMIT - totalTokens),
+              tokensLimit: DEFAULT_TOKEN_LIMIT,
+              lastUpdated: Date.now(),
+              isRealData: true,
+            })
+          }
         }
       }
     } catch {
       // Silently fail - usage endpoint might not be available
     }
   }, [])
+
+  // Poll for usage updates periodically
+  useEffect(() => {
+    // Fetch immediately
+    fetchUsage()
+
+    // Then poll every 5 seconds
+    const interval = setInterval(fetchUsage, 5000)
+
+    return () => clearInterval(interval)
+  }, [fetchUsage])
 
   const reset = useCallback(() => {
     setTokenUsage(initialUsage)

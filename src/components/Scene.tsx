@@ -66,38 +66,7 @@ function SceneContent({ cells, exploredPaths, units }: SceneProps) {
         <Unit key={unit.id} unit={unit} />
       ))}
 
-      {/* Base station at origin */}
-      <group position={[0, 0, 0]}>
-        {/* Platform */}
-        <mesh position={[0, 0.05, 0]} receiveShadow>
-          <cylinderGeometry args={[0.5, 0.6, 0.1, 8]} />
-          <meshStandardMaterial
-            color="#00ff88"
-            emissive="#00ff88"
-            emissiveIntensity={0.3}
-            roughness={0.5}
-            metalness={0.8}
-          />
-        </mesh>
-        {/* Central spire */}
-        <mesh position={[0, 0.4, 0]} castShadow>
-          <cylinderGeometry args={[0.08, 0.15, 0.7, 6]} />
-          <meshStandardMaterial
-            color="#00ff88"
-            emissive="#00ff88"
-            emissiveIntensity={0.5}
-            roughness={0.3}
-            metalness={0.9}
-          />
-        </mesh>
-        {/* Beacon light */}
-        <pointLight
-          position={[0, 0.8, 0]}
-          intensity={2}
-          distance={3}
-          color="#00ff88"
-        />
-      </group>
+{/* Agent base removed - agent floats above the grid */}
     </>
   )
 }

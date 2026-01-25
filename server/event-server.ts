@@ -1,7 +1,8 @@
 import { WebSocketServer, WebSocket } from 'ws'
 import { createServer, IncomingMessage, ServerResponse } from 'http'
-import { readdirSync, statSync, existsSync } from 'fs'
+import { readdirSync, statSync, existsSync, readFileSync } from 'fs'
 import { join, relative, dirname } from 'path'
+import { homedir } from 'os'
 
 const PORT = 8765
 const HTTP_PORT = 8766
@@ -21,6 +22,56 @@ let currentUsage = {
   total_cost_usd: 0,
   session_id: '',
   last_updated: Date.now(),
+}
+
+// Read Claude Code stats from the stats-cache.json file
+function readClaudeStats(): typeof currentUsage | null {
+  const statsFile = join(homedir(), '.claude', 'stats-cache.json')
+
+  if (!existsSync(statsFile)) {
+    return null
+  }
+
+  try {
+    const data = JSON.parse(readFileSync(statsFile, 'utf-8'))
+    const modelUsage = data.modelUsage || {}
+
+    // Aggregate across all models
+    let inputTokens = 0
+    let outputTokens = 0
+    let cacheReadTokens = 0
+    let cacheCreationTokens = 0
+    let costUSD = 0
+
+    for (const model of Object.values(modelUsage) as any[]) {
+      inputTokens += model.inputTokens || 0
+      outputTokens += model.outputTokens || 0
+      cacheReadTokens += model.cacheReadInputTokens || 0
+      cacheCreationTokens += model.cacheCreationInputTokens || 0
+      costUSD += model.costUSD || 0
+    }
+
+    // Calculate cost if not reported (Opus pricing)
+    if (costUSD === 0) {
+      costUSD = (inputTokens / 1000000 * 15) +
+                (outputTokens / 1000000 * 75) +
+                (cacheReadTokens / 1000000 * 1.875) +
+                (cacheCreationTokens / 1000000 * 18.75)
+    }
+
+    return {
+      input_tokens: inputTokens,
+      output_tokens: outputTokens,
+      cache_read_input_tokens: cacheReadTokens,
+      cache_creation_input_tokens: cacheCreationTokens,
+      total_cost_usd: costUSD,
+      session_id: 'aggregate',
+      last_updated: Date.now(),
+    }
+  } catch (err) {
+    console.error('[Stats] Failed to read stats file:', err)
+    return null
+  }
 }
 
 interface FileEntry {
@@ -264,7 +315,12 @@ const httpServer = createServer((req: IncomingMessage, res: ServerResponse) => {
       }
     })
   } else if (req.method === 'GET' && req.url === '/usage') {
-    // Return current usage data
+    // Read fresh stats from Claude's stats file
+    const stats = readClaudeStats()
+    if (stats) {
+      currentUsage = stats
+    }
+
     res.writeHead(200, { 'Content-Type': 'application/json' })
     res.end(JSON.stringify({
       usage: currentUsage,
