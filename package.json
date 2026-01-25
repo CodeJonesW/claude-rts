@@ -7,7 +7,11 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "server": "tsx server/event-server.ts",
+    "server:watch": "tsx server/event-server.ts",
+    "start": "concurrently \"npm run server -- $npm_config_path\" \"npm run dev\"",
+    "watch": "concurrently \"npm run server -- .\" \"npm run dev\""
   },
   "dependencies": {
     "@react-three/drei": "^10.7.7",
@@ -25,10 +29,12 @@
     "@types/three": "^0.182.0",
     "@types/ws": "^8.18.1",
     "@vitejs/plugin-react": "^5.1.1",
+    "concurrently": "^9.2.1",
     "eslint": "^9.39.1",
     "eslint-plugin-react-hooks": "^7.0.1",
     "eslint-plugin-react-refresh": "^0.4.24",
     "globals": "^16.5.0",
+    "tsx": "^4.21.0",
     "typescript": "~5.9.3",
     "typescript-eslint": "^8.46.4",
     "vite": "^7.2.4"

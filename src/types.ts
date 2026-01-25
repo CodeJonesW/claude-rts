@@ -9,12 +9,45 @@ export type AgentEventType =
   | 'thinking'
   | 'task_start'
   | 'task_complete'
+  | 'init'
+  | 'connected'
+  | 'usage_update'
+
+// Detailed token usage from Claude Code /usage
+export interface TokenDetails {
+  inputTokens: number
+  outputTokens: number
+  cacheReadTokens: number
+  cacheCreationTokens: number
+}
+
+// Per-model usage breakdown
+export interface ModelUsage {
+  inputTokens: number
+  outputTokens: number
+  cacheReadInputTokens: number
+  cacheCreationInputTokens: number
+  costUSD: number
+}
 
 export interface AgentEvent {
   type: AgentEventType
   path?: string
   timestamp: number
   details?: string
+  // Legacy token fields (for backwards compat)
+  tokensUsed?: number
+  tokensRemaining?: number
+  tokensLimit?: number
+  // Real usage data from Claude Code
+  usage?: {
+    inputTokens: number
+    outputTokens: number
+    cacheReadInputTokens: number
+    cacheCreationInputTokens: number
+    totalCostUSD: number
+  }
+  modelUsage?: Record<string, ModelUsage>
 }
 
 // Codebase structure

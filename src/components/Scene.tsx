@@ -34,10 +34,10 @@ function SceneContent({ cells, exploredPaths, units }: SceneProps) {
       />
 
       {/* Lighting */}
-      <ambientLight intensity={0.3} />
+      <ambientLight intensity={0.5} />
       <directionalLight
         position={[10, 15, 5]}
-        intensity={1}
+        intensity={1.2}
         castShadow
         shadow-mapSize-width={2048}
         shadow-mapSize-height={2048}
@@ -47,11 +47,13 @@ function SceneContent({ cells, exploredPaths, units }: SceneProps) {
         shadow-camera-top={20}
         shadow-camera-bottom={-20}
       />
-      <pointLight position={[-5, 5, -5]} intensity={0.5} color="#4488ff" />
-      <pointLight position={[5, 3, 10]} intensity={0.3} color="#ff8844" />
+      <pointLight position={[-5, 5, -5]} intensity={0.6} color="#4488ff" />
+      <pointLight position={[5, 3, 10]} intensity={0.4} color="#ff8844" />
+      {/* Fill light from below for visibility */}
+      <pointLight position={[0, 2, 0]} intensity={0.3} color="#8888aa" />
 
-      {/* Fog */}
-      <fog attach="fog" args={['#0a0a12', 15, 40]} />
+      {/* Fog - pushed back for better visibility */}
+      <fog attach="fog" args={['#0a0a12', 20, 50]} />
 
       {/* Grid and buildings */}
       <IsometricGrid cells={cells} exploredPaths={exploredPaths} />

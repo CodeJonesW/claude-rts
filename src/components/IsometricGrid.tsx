@@ -17,38 +17,46 @@ function gridToWorld(x: number, y: number, elevation: number = 0): [number, numb
   return [worldX, worldY, worldZ]
 }
 
+// Get color by file extension
+function getFileColor(name: string | undefined, isDirectory: boolean): string {
+  if (isDirectory) {
+    return '#4a5568' // Directories are gray
+  }
+
+  const ext = name?.split('.').pop()?.toLowerCase()
+  switch (ext) {
+    case 'ts':
+    case 'tsx':
+      return '#3178c6' // TypeScript blue
+    case 'js':
+    case 'jsx':
+      return '#f7df1e' // JavaScript yellow
+    case 'css':
+    case 'scss':
+      return '#264de4' // CSS blue
+    case 'json':
+      return '#5a5a5a' // JSON gray
+    case 'md':
+      return '#083fa1' // Markdown blue
+    case 'sh':
+      return '#4eaa25' // Shell green
+    case 'html':
+      return '#e34c26' // HTML orange
+    default:
+      return '#6b7280' // Default gray
+  }
+}
+
 function FileBuilding({ cell, explored }: { cell: GridCell; explored: boolean }) {
   const [x, y, z] = gridToWorld(cell.x, cell.y, cell.elevation)
   const isDirectory = cell.node?.type === 'directory'
 
-  // Color based on file type and explored state
-  const baseColor = useMemo(() => {
-    if (!explored) return '#1a1a2e' // Fog of war - dark
+  // Get the base color for this file type
+  const fileColor = useMemo(() => getFileColor(cell.node?.name, isDirectory), [isDirectory, cell.node?.name])
 
-    if (isDirectory) {
-      return '#4a5568' // Directories are gray
-    }
-
-    // Color by file extension
-    const ext = cell.node?.name.split('.').pop()?.toLowerCase()
-    switch (ext) {
-      case 'ts':
-      case 'tsx':
-        return '#3178c6' // TypeScript blue
-      case 'js':
-      case 'jsx':
-        return '#f7df1e' // JavaScript yellow
-      case 'css':
-      case 'scss':
-        return '#264de4' // CSS blue
-      case 'json':
-        return '#5a5a5a' // JSON gray
-      case 'md':
-        return '#083fa1' // Markdown blue
-      default:
-        return '#6b7280' // Default gray
-    }
-  }, [explored, isDirectory, cell.node?.name])
+  // Unexplored nodes show dimmed version of their actual color
+  const baseColor = explored ? fileColor : fileColor
+  const dimFactor = explored ? 1 : 0.3
 
   const height = isDirectory ? 0.3 : 0.15 + (cell.node?.accessCount || 0) * 0.05
   const width = isDirectory ? 0.5 : 0.35
@@ -56,13 +64,19 @@ function FileBuilding({ cell, explored }: { cell: GridCell; explored: boolean })
   // Glow effect for recently accessed
   const recentlyAccessed = cell.node?.lastAccessed && (Date.now() - cell.node.lastAccessed) < 2000
 
+  // Emissive settings - unexplored nodes have a subtle glow, explored are brighter
+  const emissiveColor = explored ? fileColor : fileColor
+  const emissiveIntensity = recentlyAccessed ? 0.8 : explored ? 0.15 : 0.08
+
   return (
     <group position={[x, y, z]}>
       {/* Base platform */}
       <mesh position={[0, 0, 0]} receiveShadow>
         <boxGeometry args={[0.55, 0.05, 0.55]} />
         <meshStandardMaterial
-          color={explored ? '#2d3748' : '#0f0f1a'}
+          color={explored ? '#2d3748' : '#1a1f2e'}
+          emissive={explored ? '#1a2a2a' : '#0a1015'}
+          emissiveIntensity={0.2}
           roughness={0.8}
         />
       </mesh>
@@ -72,18 +86,24 @@ function FileBuilding({ cell, explored }: { cell: GridCell; explored: boolean })
         <boxGeometry args={[width, height, width]} />
         <meshStandardMaterial
           color={baseColor}
-          emissive={recentlyAccessed ? baseColor : '#000000'}
-          emissiveIntensity={recentlyAccessed ? 0.5 : 0}
-          roughness={0.6}
-          metalness={0.2}
+          emissive={emissiveColor}
+          emissiveIntensity={emissiveIntensity}
+          roughness={explored ? 0.5 : 0.7}
+          metalness={explored ? 0.3 : 0.1}
+          transparent={!explored}
+          opacity={explored ? 1 : dimFactor + 0.4}
         />
       </mesh>
 
       {/* Antenna for directories */}
-      {isDirectory && explored && (
+      {isDirectory && (
         <mesh position={[0, height + 0.1, 0]}>
           <cylinderGeometry args={[0.02, 0.02, 0.15]} />
-          <meshStandardMaterial color="#00ff88" emissive="#00ff88" emissiveIntensity={0.3} />
+          <meshStandardMaterial
+            color={explored ? '#00ff88' : '#225544'}
+            emissive={explored ? '#00ff88' : '#113322'}
+            emissiveIntensity={explored ? 0.3 : 0.15}
+          />
         </mesh>
       )}
 
@@ -98,7 +118,7 @@ function FileBuilding({ cell, explored }: { cell: GridCell; explored: boolean })
         >
           <Text
             fontSize={0.12}
-            color={explored ? (isDirectory ? '#00ff88' : '#ffffff') : '#333344'}
+            color={explored ? (isDirectory ? '#00ff88' : '#ffffff') : (isDirectory ? '#447755' : '#8888aa')}
             anchorX="center"
             anchorY="bottom"
             outlineWidth={0.01}
@@ -107,10 +127,10 @@ function FileBuilding({ cell, explored }: { cell: GridCell; explored: boolean })
             {cell.node.name}
           </Text>
           {/* Show parent directory for context on files */}
-          {!isDirectory && explored && (
+          {!isDirectory && (
             <Text
               fontSize={0.07}
-              color="#666688"
+              color={explored ? '#666688' : '#444455'}
               anchorX="center"
               anchorY="top"
               position={[0, -0.02, 0]}
@@ -146,10 +166,10 @@ function ConnectionLine({
   return (
     <Line
       points={points}
-      color={explored ? '#00ff88' : '#1a2a1a'}
-      lineWidth={explored ? 1.5 : 0.5}
+      color={explored ? '#00ff88' : '#334455'}
+      lineWidth={explored ? 1.5 : 1}
       transparent
-      opacity={explored ? 0.6 : 0.2}
+      opacity={explored ? 0.7 : 0.4}
     />
   )
 }

@@ -13,58 +13,109 @@ export function useEventStream({ url, onEvent, onConnect, onDisconnect }: UseEve
   const [connected, setConnected] = useState(false)
   const [eventHistory, setEventHistory] = useState<AgentEvent[]>([])
   const reconnectTimeoutRef = useRef<number | null>(null)
+  const isConnectingRef = useRef(false)
+  const mountedRef = useRef(true)
+
+  // Use refs for callbacks to avoid dependency issues
+  const onEventRef = useRef(onEvent)
+  const onConnectRef = useRef(onConnect)
+  const onDisconnectRef = useRef(onDisconnect)
+
+  // Update refs when callbacks change
+  useEffect(() => {
+    onEventRef.current = onEvent
+    onConnectRef.current = onConnect
+    onDisconnectRef.current = onDisconnect
+  }, [onEvent, onConnect, onDisconnect])
 
   const connect = useCallback(() => {
+    // Guard against multiple simultaneous connection attempts
+    if (isConnectingRef.current) return
     if (wsRef.current?.readyState === WebSocket.OPEN) return
+    if (wsRef.current?.readyState === WebSocket.CONNECTING) return
+
+    isConnectingRef.current = true
 
     try {
+      console.log('[WS] Connecting to', url)
       const ws = new WebSocket(url)
 
       ws.onopen = () => {
+        if (!mountedRef.current) {
+          ws.close()
+          return
+        }
+        console.log('[WS] Connected')
+        isConnectingRef.current = false
         setConnected(true)
-        onConnect?.()
+        onConnectRef.current?.()
       }
 
       ws.onmessage = (message) => {
+        if (!mountedRef.current) return
         try {
           const event: AgentEvent = JSON.parse(message.data)
-          setEventHistory(prev => [...prev.slice(-100), event]) // Keep last 100 events
-          onEvent(event)
+          setEventHistory(prev => [...prev.slice(-100), event])
+          onEventRef.current(event)
         } catch {
-          console.error('Failed to parse event:', message.data)
+          console.error('[WS] Failed to parse event:', message.data)
         }
       }
 
       ws.onclose = () => {
-        setConnected(false)
-        onDisconnect?.()
+        console.log('[WS] Disconnected')
+        isConnectingRef.current = false
+        wsRef.current = null
 
-        // Attempt to reconnect after 2 seconds
+        if (!mountedRef.current) return
+
+        setConnected(false)
+        onDisconnectRef.current?.()
+
+        // Reconnect after 3 seconds
+        if (reconnectTimeoutRef.current) {
+          clearTimeout(reconnectTimeoutRef.current)
+        }
         reconnectTimeoutRef.current = window.setTimeout(() => {
-          connect()
-        }, 2000)
+          if (mountedRef.current) {
+            connect()
+          }
+        }, 3000)
       }
 
-      ws.onerror = (error) => {
-        console.error('WebSocket error:', error)
+      ws.onerror = () => {
+        // Error is followed by close, so just log it
+        console.log('[WS] Connection error (server may not be running)')
+        isConnectingRef.current = false
       }
 
       wsRef.current = ws
     } catch (error) {
-      console.error('Failed to connect:', error)
+      console.error('[WS] Failed to create WebSocket:', error)
+      isConnectingRef.current = false
     }
-  }, [url, onEvent, onConnect, onDisconnect])
+  }, [url])
 
   const disconnect = useCallback(() => {
     if (reconnectTimeoutRef.current) {
       clearTimeout(reconnectTimeoutRef.current)
+      reconnectTimeoutRef.current = null
     }
-    wsRef.current?.close()
+    if (wsRef.current) {
+      wsRef.current.close()
+      wsRef.current = null
+    }
+    isConnectingRef.current = false
   }, [])
 
   useEffect(() => {
+    mountedRef.current = true
     connect()
-    return () => disconnect()
+
+    return () => {
+      mountedRef.current = false
+      disconnect()
+    }
   }, [connect, disconnect])
 
   return {
@@ -78,6 +129,11 @@ export function useEventStream({ url, onEvent, onConnect, onDisconnect }: UseEve
 export function useDemoEventStream(onEvent: (event: AgentEvent) => void, paths: string[]) {
   const [isRunning, setIsRunning] = useState(false)
   const intervalRef = useRef<number | null>(null)
+  const onEventRef = useRef(onEvent)
+
+  useEffect(() => {
+    onEventRef.current = onEvent
+  }, [onEvent])
 
   const start = useCallback(() => {
     if (isRunning || paths.length === 0) return
@@ -98,14 +154,17 @@ export function useDemoEventStream(onEvent: (event: AgentEvent) => void, paths: 
         details: `${type} on ${path.split('/').pop()}`,
       }
 
-      onEvent(event)
+      onEventRef.current(event)
       index++
 
       if (index > 50) {
-        stop()
+        if (intervalRef.current) {
+          clearInterval(intervalRef.current)
+        }
+        setIsRunning(false)
       }
     }, 800)
-  }, [isRunning, paths, onEvent])
+  }, [isRunning, paths])
 
   const stop = useCallback(() => {
     if (intervalRef.current) {
