@@ -11,6 +11,7 @@
     "server": "tsx server/event-server.ts",
     "server:watch": "tsx server/event-server.ts",
     "start": "concurrently \"npm run server -- $npm_config_path\" \"npm run dev\"",
+    "start:all": "sh server/start-all.sh",
     "watch": "concurrently \"npm run server -- .\" \"npm run dev\""
   },
   "dependencies": {

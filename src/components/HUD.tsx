@@ -251,7 +251,7 @@ export default function HUD({
       </div>
 
       {/* Bottom right - Controls */}
-      {/* <div style={{
+      <div style={{
         position: 'absolute',
         bottom: 20,
         right: 20,
@@ -281,7 +281,7 @@ export default function HUD({
         <div style={{ fontSize: 10, opacity: 0.5, marginTop: 8 }}>
           Drag to rotate • Scroll to zoom
         </div>
-      </div> */}
+      </div>
     </div>
   )
 }

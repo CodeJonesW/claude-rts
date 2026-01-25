@@ -33,27 +33,30 @@ function SceneContent({ cells, exploredPaths, units }: SceneProps) {
         target={[0, 0, 0]}
       />
 
-      {/* Lighting */}
-      <ambientLight intensity={0.5} />
+      {/* Lighting - brighter for visibility */}
+      <ambientLight intensity={0.7} />
       <directionalLight
-        position={[10, 15, 5]}
-        intensity={1.2}
+        position={[10, 20, 5]}
+        intensity={1.5}
         castShadow
         shadow-mapSize-width={2048}
         shadow-mapSize-height={2048}
-        shadow-camera-far={50}
-        shadow-camera-left={-20}
-        shadow-camera-right={20}
-        shadow-camera-top={20}
-        shadow-camera-bottom={-20}
+        shadow-camera-far={60}
+        shadow-camera-left={-30}
+        shadow-camera-right={30}
+        shadow-camera-top={30}
+        shadow-camera-bottom={-30}
       />
-      <pointLight position={[-5, 5, -5]} intensity={0.6} color="#4488ff" />
-      <pointLight position={[5, 3, 10]} intensity={0.4} color="#ff8844" />
-      {/* Fill light from below for visibility */}
-      <pointLight position={[0, 2, 0]} intensity={0.3} color="#8888aa" />
+      <pointLight position={[-10, 8, -10]} intensity={0.8} color="#4488ff" />
+      <pointLight position={[10, 6, 15]} intensity={0.6} color="#ff8844" />
+      {/* Central fill light */}
+      <pointLight position={[0, 5, 0]} intensity={0.5} color="#aabbff" />
+      {/* Rim lights for depth */}
+      <pointLight position={[-15, 3, 10]} intensity={0.4} color="#88ffaa" />
+      <pointLight position={[15, 3, -10]} intensity={0.4} color="#ffaa88" />
 
-      {/* Fog - pushed back for better visibility */}
-      <fog attach="fog" args={['#0a0a12', 20, 50]} />
+      {/* Fog - pushed way back for maximum visibility */}
+      <fog attach="fog" args={['#0a0a18', 40, 100]} />
 
       {/* Grid and buildings */}
       <IsometricGrid cells={cells} exploredPaths={exploredPaths} />

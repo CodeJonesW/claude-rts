@@ -17,33 +17,35 @@ function gridToWorld(x: number, y: number, elevation: number = 0): [number, numb
   return [worldX, worldY, worldZ]
 }
 
-// Get color by file extension
+// Get color by file extension - brighter, more saturated colors for visibility
 function getFileColor(name: string | undefined, isDirectory: boolean): string {
   if (isDirectory) {
-    return '#4a5568' // Directories are gray
+    return '#6b8aff' // Directories are bright blue
   }
 
   const ext = name?.split('.').pop()?.toLowerCase()
   switch (ext) {
     case 'ts':
     case 'tsx':
-      return '#3178c6' // TypeScript blue
+      return '#4a9eff' // TypeScript bright blue
     case 'js':
     case 'jsx':
-      return '#f7df1e' // JavaScript yellow
+      return '#ffee55' // JavaScript bright yellow
     case 'css':
     case 'scss':
-      return '#264de4' // CSS blue
+      return '#5588ff' // CSS bright blue
     case 'json':
-      return '#5a5a5a' // JSON gray
+      return '#aa88ff' // JSON purple
     case 'md':
-      return '#083fa1' // Markdown blue
+      return '#44aaff' // Markdown bright blue
     case 'sh':
-      return '#4eaa25' // Shell green
+      return '#66ff66' // Shell bright green
     case 'html':
-      return '#e34c26' // HTML orange
+      return '#ff6644' // HTML bright orange
+    case 'svg':
+      return '#ffaa44' // SVG orange
     default:
-      return '#6b7280' // Default gray
+      return '#88aacc' // Default light blue-gray
   }
 }
 
@@ -54,86 +56,121 @@ function FileBuilding({ cell, explored }: { cell: GridCell; explored: boolean })
   // Get the base color for this file type
   const fileColor = useMemo(() => getFileColor(cell.node?.name, isDirectory), [isDirectory, cell.node?.name])
 
-  // Unexplored nodes show dimmed version of their actual color
-  const baseColor = explored ? fileColor : fileColor
-  const dimFactor = explored ? 1 : 0.3
-
-  const height = isDirectory ? 0.3 : 0.15 + (cell.node?.accessCount || 0) * 0.05
-  const width = isDirectory ? 0.5 : 0.35
+  // Larger sizes for better visibility
+  const height = isDirectory ? 0.6 : 0.35 + (cell.node?.accessCount || 0) * 0.1
+  const width = isDirectory ? 0.8 : 0.55
 
   // Glow effect for recently accessed
   const recentlyAccessed = cell.node?.lastAccessed && (Date.now() - cell.node.lastAccessed) < 2000
 
-  // Emissive settings - unexplored nodes have a subtle glow, explored are brighter
-  const emissiveColor = explored ? fileColor : fileColor
-  const emissiveIntensity = recentlyAccessed ? 0.8 : explored ? 0.15 : 0.08
+  // Strong emissive for visibility - all nodes glow
+  const emissiveIntensity = recentlyAccessed ? 1.2 : explored ? 0.5 : 0.25
 
   return (
     <group position={[x, y, z]}>
-      {/* Base platform */}
-      <mesh position={[0, 0, 0]} receiveShadow>
-        <boxGeometry args={[0.55, 0.05, 0.55]} />
+      {/* Base platform - larger and glowing */}
+      <mesh position={[0, 0.02, 0]} receiveShadow>
+        <boxGeometry args={[width + 0.2, 0.04, width + 0.2]} />
         <meshStandardMaterial
-          color={explored ? '#2d3748' : '#1a1f2e'}
-          emissive={explored ? '#1a2a2a' : '#0a1015'}
-          emissiveIntensity={0.2}
-          roughness={0.8}
+          color={explored ? '#3a4a5a' : '#2a3040'}
+          emissive={fileColor}
+          emissiveIntensity={explored ? 0.15 : 0.08}
+          roughness={0.6}
         />
       </mesh>
 
-      {/* Building */}
-      <mesh position={[0, height / 2 + 0.025, 0]} castShadow receiveShadow>
+      {/* Main building - larger with strong glow */}
+      <mesh position={[0, height / 2 + 0.04, 0]} castShadow receiveShadow>
         <boxGeometry args={[width, height, width]} />
         <meshStandardMaterial
-          color={baseColor}
-          emissive={emissiveColor}
+          color={fileColor}
+          emissive={fileColor}
           emissiveIntensity={emissiveIntensity}
-          roughness={explored ? 0.5 : 0.7}
-          metalness={explored ? 0.3 : 0.1}
-          transparent={!explored}
-          opacity={explored ? 1 : dimFactor + 0.4}
+          roughness={0.4}
+          metalness={0.2}
         />
       </mesh>
 
-      {/* Antenna for directories */}
+      {/* Top cap - brighter highlight */}
+      <mesh position={[0, height + 0.06, 0]}>
+        <boxGeometry args={[width * 0.8, 0.04, width * 0.8]} />
+        <meshStandardMaterial
+          color="#ffffff"
+          emissive={fileColor}
+          emissiveIntensity={explored ? 0.8 : 0.4}
+          roughness={0.2}
+          metalness={0.5}
+        />
+      </mesh>
+
+      {/* Antenna/beacon for directories */}
       {isDirectory && (
-        <mesh position={[0, height + 0.1, 0]}>
-          <cylinderGeometry args={[0.02, 0.02, 0.15]} />
-          <meshStandardMaterial
-            color={explored ? '#00ff88' : '#225544'}
-            emissive={explored ? '#00ff88' : '#113322'}
-            emissiveIntensity={explored ? 0.3 : 0.15}
+        <>
+          <mesh position={[0, height + 0.2, 0]}>
+            <cylinderGeometry args={[0.04, 0.04, 0.25]} />
+            <meshStandardMaterial
+              color="#00ff88"
+              emissive="#00ff88"
+              emissiveIntensity={explored ? 0.8 : 0.4}
+            />
+          </mesh>
+          {/* Glowing beacon on top */}
+          <mesh position={[0, height + 0.38, 0]}>
+            <sphereGeometry args={[0.08, 8, 8]} />
+            <meshStandardMaterial
+              color="#00ff88"
+              emissive="#00ff88"
+              emissiveIntensity={1.5}
+            />
+          </mesh>
+          {/* Point light for directory glow */}
+          <pointLight
+            position={[0, height + 0.4, 0]}
+            intensity={explored ? 0.5 : 0.2}
+            distance={2}
+            color="#00ff88"
           />
-        </mesh>
+        </>
       )}
 
-      {/* Label */}
+      {/* Point light for each node - makes them visible from distance */}
+      <pointLight
+        position={[0, height + 0.2, 0]}
+        intensity={explored ? 0.3 : 0.15}
+        distance={1.5}
+        color={fileColor}
+      />
+
+      {/* Label - larger text with stronger outline */}
       {cell.node && (
         <Billboard
           follow={true}
           lockX={false}
           lockY={false}
           lockZ={false}
-          position={[0, height + (isDirectory ? 0.35 : 0.25), 0]}
+          position={[0, height + (isDirectory ? 0.6 : 0.4), 0]}
         >
           <Text
-            fontSize={0.12}
-            color={explored ? (isDirectory ? '#00ff88' : '#ffffff') : (isDirectory ? '#447755' : '#8888aa')}
+            fontSize={0.18}
+            color={explored ? (isDirectory ? '#00ff88' : '#ffffff') : (isDirectory ? '#55aa77' : '#aabbcc')}
             anchorX="center"
             anchorY="bottom"
-            outlineWidth={0.01}
+            outlineWidth={0.02}
             outlineColor="#000000"
+            fontWeight="bold"
           >
             {cell.node.name}
           </Text>
           {/* Show parent directory for context on files */}
           {!isDirectory && (
             <Text
-              fontSize={0.07}
-              color={explored ? '#666688' : '#444455'}
+              fontSize={0.1}
+              color={explored ? '#8899aa' : '#556677'}
               anchorX="center"
               anchorY="top"
-              position={[0, -0.02, 0]}
+              position={[0, -0.04, 0]}
+              outlineWidth={0.01}
+              outlineColor="#000000"
             >
               {cell.node.path.split('/').slice(-2, -1)[0]}
             </Text>
@@ -157,19 +194,19 @@ function ConnectionLine({
   const [px, , pz] = gridToWorld(parentCell.x, parentCell.y, parentCell.elevation)
   const [cx, , cz] = gridToWorld(childCell.x, childCell.y, childCell.elevation)
 
-  // Line runs along ground level
+  // Line runs slightly above ground for visibility
   const points: [number, number, number][] = [
-    [px, 0.02, pz],
-    [cx, 0.02, cz],
+    [px, 0.08, pz],
+    [cx, 0.08, cz],
   ]
 
   return (
     <Line
       points={points}
-      color={explored ? '#00ff88' : '#334455'}
-      lineWidth={explored ? 1.5 : 1}
+      color={explored ? '#00ff88' : '#4466aa'}
+      lineWidth={explored ? 3 : 2}
       transparent
-      opacity={explored ? 0.7 : 0.4}
+      opacity={explored ? 0.9 : 0.6}
     />
   )
 }

@@ -23,11 +23,16 @@ let currentUsage = {
   last_updated: Date.now(),
 }
 
+interface FileEntry {
+  path: string
+  type: 'file' | 'directory'
+}
+
 // Recursively scan directory for files
-function scanDirectory(dir: string, maxDepth = 4, currentDepth = 0): string[] {
+function scanDirectory(dir: string, maxDepth = 6, currentDepth = 0): FileEntry[] {
   if (currentDepth >= maxDepth) return []
 
-  const files: string[] = []
+  const files: FileEntry[] = []
 
   try {
     const entries = readdirSync(dir, { withFileTypes: true })
@@ -40,10 +45,10 @@ function scanDirectory(dir: string, maxDepth = 4, currentDepth = 0): string[] {
       const fullPath = join(dir, entry.name)
 
       if (entry.isDirectory()) {
-        files.push(fullPath)
+        files.push({ path: fullPath, type: 'directory' })
         files.push(...scanDirectory(fullPath, maxDepth, currentDepth + 1))
       } else {
-        files.push(fullPath)
+        files.push({ path: fullPath, type: 'file' })
       }
     }
   } catch (err) {
@@ -55,10 +60,13 @@ function scanDirectory(dir: string, maxDepth = 4, currentDepth = 0): string[] {
 
 // Get file structure for the visualizer
 function getFileStructure() {
-  const files = scanDirectory(basePath)
+  const entries = scanDirectory(basePath)
   return {
     basePath: basePath,
-    files: files.map(f => relative(basePath, f) ? `${basePath}/${relative(basePath, f)}` : f)
+    files: entries.map(e => ({
+      path: e.path,
+      type: e.type,
+    }))
   }
 }
 

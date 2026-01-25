@@ -7,31 +7,42 @@ import { useUnits } from './hooks/useUnits'
 import { useTokenUsage } from './hooks/useTokenUsage'
 import type { AgentEvent } from './types'
 
+interface FileEntry {
+  path: string
+  type: 'file' | 'directory'
+}
+
 // Fallback demo files when server isn't providing real structure
-const DEMO_FILES = [
-  '/project/src/index.ts',
-  '/project/src/App.tsx',
-  '/project/src/main.tsx',
-  '/project/src/types.ts',
-  '/project/src/components/Header.tsx',
-  '/project/src/components/Footer.tsx',
-  '/project/src/components/Button.tsx',
-  '/project/src/components/Modal.tsx',
-  '/project/src/components/Card.tsx',
-  '/project/src/hooks/useAuth.ts',
-  '/project/src/hooks/useApi.ts',
-  '/project/src/hooks/useState.ts',
-  '/project/src/utils/format.ts',
-  '/project/src/utils/helpers.ts',
-  '/project/src/utils/validate.ts',
-  '/project/src/api/client.ts',
-  '/project/src/api/endpoints.ts',
-  '/project/src/styles/main.css',
-  '/project/src/styles/components.css',
-  '/project/package.json',
-  '/project/tsconfig.json',
-  '/project/vite.config.ts',
-  '/project/README.md',
+const DEMO_FILES: FileEntry[] = [
+  { path: '/project/src', type: 'directory' },
+  { path: '/project/src/index.ts', type: 'file' },
+  { path: '/project/src/App.tsx', type: 'file' },
+  { path: '/project/src/main.tsx', type: 'file' },
+  { path: '/project/src/types.ts', type: 'file' },
+  { path: '/project/src/components', type: 'directory' },
+  { path: '/project/src/components/Header.tsx', type: 'file' },
+  { path: '/project/src/components/Footer.tsx', type: 'file' },
+  { path: '/project/src/components/Button.tsx', type: 'file' },
+  { path: '/project/src/components/Modal.tsx', type: 'file' },
+  { path: '/project/src/components/Card.tsx', type: 'file' },
+  { path: '/project/src/hooks', type: 'directory' },
+  { path: '/project/src/hooks/useAuth.ts', type: 'file' },
+  { path: '/project/src/hooks/useApi.ts', type: 'file' },
+  { path: '/project/src/hooks/useState.ts', type: 'file' },
+  { path: '/project/src/utils', type: 'directory' },
+  { path: '/project/src/utils/format.ts', type: 'file' },
+  { path: '/project/src/utils/helpers.ts', type: 'file' },
+  { path: '/project/src/utils/validate.ts', type: 'file' },
+  { path: '/project/src/api', type: 'directory' },
+  { path: '/project/src/api/client.ts', type: 'file' },
+  { path: '/project/src/api/endpoints.ts', type: 'file' },
+  { path: '/project/src/styles', type: 'directory' },
+  { path: '/project/src/styles/main.css', type: 'file' },
+  { path: '/project/src/styles/components.css', type: 'file' },
+  { path: '/project/package.json', type: 'file' },
+  { path: '/project/tsconfig.json', type: 'file' },
+  { path: '/project/vite.config.ts', type: 'file' },
+  { path: '/project/README.md', type: 'file' },
 ]
 
 const WS_URL = 'ws://localhost:8765'
@@ -39,7 +50,7 @@ const WS_URL = 'ws://localhost:8765'
 function App() {
   const [wsConnected, setWsConnected] = useState(false)
   const [basePath, setBasePath] = useState('/project')
-  const [filePaths, setFilePaths] = useState<string[]>(DEMO_FILES)
+  const [fileEntries, setFileEntries] = useState<FileEntry[]>(DEMO_FILES)
   const initializedRef = useRef(false)
 
   const {
@@ -55,12 +66,12 @@ function App() {
   const { tokenUsage, handleEvent: handleTokenEvent, fetchUsage } = useTokenUsage()
 
   // Handle events from WebSocket
-  const handleEvent = useCallback((event: AgentEvent & { basePath?: string; files?: string[] }) => {
+  const handleEvent = useCallback((event: AgentEvent & { basePath?: string; files?: FileEntry[] }) => {
     // Handle init event with file structure from server
     if (event.type === 'init' && event.files && event.basePath) {
-      console.log('[App] Received file structure:', event.files.length, 'files from', event.basePath)
+      console.log('[App] Received file structure:', event.files.length, 'entries from', event.basePath)
       setBasePath(event.basePath)
-      setFilePaths(event.files)
+      setFileEntries(event.files)
       initializedRef.current = false // Trigger re-initialization
       return
     }
@@ -84,16 +95,17 @@ function App() {
   })
 
   // Demo mode - uses current file paths
+  const filePaths = fileEntries.map(e => e.path)
   const demoStream = useDemoEventStream(handleEvent, filePaths)
 
-  // Initialize/reinitialize codebase when paths change
+  // Initialize/reinitialize codebase when entries change
   useEffect(() => {
-    if (!initializedRef.current || filePaths !== DEMO_FILES) {
-      console.log('[App] Initializing codebase with', filePaths.length, 'files, basePath:', basePath)
-      initializeCodebase(filePaths)
+    if (!initializedRef.current || fileEntries !== DEMO_FILES) {
+      console.log('[App] Initializing codebase with', fileEntries.length, 'entries, basePath:', basePath)
+      initializeCodebase(fileEntries)
       initializedRef.current = true
     }
-  }, [filePaths, basePath, initializeCodebase])
+  }, [fileEntries, basePath, initializeCodebase])
 
   return (
     <div style={{ width: '100vw', height: '100vh', position: 'relative', overflow: 'hidden' }}>

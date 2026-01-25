@@ -1,8 +1,13 @@
 import { useState, useCallback } from 'react'
 import type { FileNode, AgentEvent, GridCell } from '../types'
 
+interface FileEntry {
+  path: string
+  type: 'file' | 'directory'
+}
+
 // Convert a flat file list to a tree structure
-function buildFileTree(paths: string[], basePath: string): FileNode {
+function buildFileTree(entries: FileEntry[], basePath: string): FileNode {
   const root: FileNode = {
     name: basePath.split('/').pop() || 'root',
     path: basePath,
@@ -15,11 +20,17 @@ function buildFileTree(paths: string[], basePath: string): FileNode {
   const nodeMap = new Map<string, FileNode>()
   nodeMap.set(basePath, root)
 
-  // Sort paths so directories come before their contents
-  const sortedPaths = [...paths].sort()
+  // Create a type lookup for fast access
+  const typeMap = new Map<string, 'file' | 'directory'>()
+  for (const entry of entries) {
+    typeMap.set(entry.path, entry.type)
+  }
 
-  for (const fullPath of sortedPaths) {
-    const relativePath = fullPath.replace(basePath + '/', '')
+  // Sort entries so directories come before their contents
+  const sortedEntries = [...entries].sort((a, b) => a.path.localeCompare(b.path))
+
+  for (const entry of sortedEntries) {
+    const relativePath = entry.path.replace(basePath + '/', '')
     const parts = relativePath.split('/')
     let currentPath = basePath
 
@@ -29,11 +40,13 @@ function buildFileTree(paths: string[], basePath: string): FileNode {
       const isLast = i === parts.length - 1
 
       if (!nodeMap.has(newPath)) {
+        // Use the type from the server if this is the actual entry, otherwise infer
+        const nodeType = isLast ? entry.type : 'directory'
         const node: FileNode = {
           name: part,
           path: newPath,
-          type: isLast ? 'file' : 'directory',
-          children: isLast ? undefined : [],
+          type: nodeType,
+          children: nodeType === 'directory' ? [] : undefined,
           explored: false,
           accessCount: 0,
         }
@@ -59,9 +72,8 @@ function countDescendants(node: FileNode): number {
 }
 
 // Convert tree to grid layout using a radial tree structure
-function treeToGrid(root: FileNode, maxDepth = 5): GridCell[] {
+function treeToGrid(root: FileNode, maxDepth = 6): GridCell[] {
   const cells: GridCell[] = []
-  const spacing = 1.2 // Space between nodes
 
   // Root at origin
   cells.push({
@@ -88,21 +100,38 @@ function treeToGrid(root: FileNode, maxDepth = 5): GridCell[] {
       return a.name.localeCompare(b.name)
     })
 
+    const childCount = sorted.length
     const angleRange = angleEnd - angleStart
 
     // Calculate weight for each child based on descendants
     const weights = sorted.map(child => countDescendants(child))
     const totalWeight = weights.reduce((a, b) => a + b, 0)
 
+    // Minimum angle per child to prevent overlapping (in radians)
+    // Larger at depth 1 where we have more items
+    const minAnglePerChild = depth === 1 ? 0.25 : 0.15
+
+    // Calculate required angle range based on minimum spacing
+    const requiredAngle = childCount * minAnglePerChild
+    const effectiveAngleRange = Math.max(angleRange, requiredAngle)
+
+    // Radius calculation: larger base radius, diminishing growth for deeper levels
+    // Depth 1: 3.5, Depth 2: 5.0, Depth 3: 6.0, Depth 4: 6.8, etc.
+    const baseRadius = 3.5
+    const radius = baseRadius + Math.log2(depth + 1) * 2
+
     let currentAngle = angleStart
-    const radius = depth * spacing * 2
 
     sorted.forEach((child, index) => {
-      // Angle span proportional to weight
-      const childAngleSpan = (weights[index] / totalWeight) * angleRange
+      // Angle span proportional to weight, but with minimum spacing
+      const weightRatio = weights[index] / totalWeight
+      const childAngleSpan = Math.max(
+        weightRatio * effectiveAngleRange,
+        minAnglePerChild
+      )
       const angle = currentAngle + childAngleSpan / 2
 
-      // Convert polar to cartesian
+      // Convert polar to cartesian (relative to parent)
       const x = parentX + Math.cos(angle) * radius
       const y = parentY + Math.sin(angle) * radius
 
@@ -110,13 +139,15 @@ function treeToGrid(root: FileNode, maxDepth = 5): GridCell[] {
         x: Math.round(x * 10) / 10,
         y: Math.round(y * 10) / 10,
         node: child,
-        elevation: depth * 0.15,
+        elevation: depth * 0.1,
       })
 
       // Recursively layout children in a sub-arc
-      if (child.type === 'directory' && child.children) {
-        const subAngleStart = currentAngle
-        const subAngleEnd = currentAngle + childAngleSpan
+      if (child.type === 'directory' && child.children && child.children.length > 0) {
+        // Give directories a wider sub-arc for their children
+        const subAngleSpread = Math.max(childAngleSpan * 1.2, 0.4)
+        const subAngleStart = angle - subAngleSpread / 2
+        const subAngleEnd = angle + subAngleSpread / 2
         layoutChildren(child, x, y, depth + 1, subAngleStart, subAngleEnd)
       }
 
@@ -124,9 +155,9 @@ function treeToGrid(root: FileNode, maxDepth = 5): GridCell[] {
     })
   }
 
-  // Start layout from root, spanning full circle (or half for better visibility)
+  // Start layout from root, using full circle for even distribution
   if (root.children && root.children.length > 0) {
-    layoutChildren(root, 0, 0, 1, -Math.PI * 0.75, Math.PI * 0.75)
+    layoutChildren(root, 0, 0, 1, -Math.PI, Math.PI)
   }
 
   return cells
@@ -137,11 +168,17 @@ export function useCodebaseState(basePath: string) {
   const [grid, setGrid] = useState<GridCell[]>([])
   const [exploredPaths, setExploredPaths] = useState<Set<string>>(new Set())
 
-  // Initialize the codebase from a list of file paths
-  const initializeCodebase = useCallback((paths: string[]) => {
-    const tree = buildFileTree(paths, basePath)
+  // Initialize the codebase from a list of file entries
+  const initializeCodebase = useCallback((entries: FileEntry[] | string[]) => {
+    // Handle both old format (string[]) and new format (FileEntry[])
+    const fileEntries: FileEntry[] = entries.length > 0 && typeof entries[0] === 'string'
+      ? (entries as string[]).map(p => ({ path: p, type: 'file' as const }))
+      : entries as FileEntry[]
+
+    const tree = buildFileTree(fileEntries, basePath)
+    const newGrid = treeToGrid(tree)
     setFileTree(tree)
-    setGrid(treeToGrid(tree))
+    setGrid(newGrid)
   }, [basePath])
 
   // Handle an agent event - update explored state
