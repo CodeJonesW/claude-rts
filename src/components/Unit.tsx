@@ -118,6 +118,129 @@ export default function Unit({ unit }: UnitProps) {
         />
       </mesh>
 
+      {/* Little alien on screen */}
+      <group position={[0, -0.05, 0.12]}>
+        {/* Alien head */}
+        <mesh position={[0, 0.12, 0]}>
+          <sphereGeometry args={[0.15, 12, 10]} />
+          <meshStandardMaterial
+            color="#44ff88"
+            emissive="#22cc66"
+            emissiveIntensity={0.4}
+            roughness={0.6}
+          />
+        </mesh>
+
+        {/* Left eye */}
+        <mesh position={[-0.07, 0.14, 0.1]}>
+          <sphereGeometry args={[0.055, 8, 8]} />
+          <meshStandardMaterial
+            color="#111111"
+            emissive="#000000"
+            roughness={0.2}
+            metalness={0.8}
+          />
+        </mesh>
+        {/* Left eye shine */}
+        <mesh position={[-0.05, 0.16, 0.14]}>
+          <sphereGeometry args={[0.015, 6, 6]} />
+          <meshStandardMaterial
+            color="#ffffff"
+            emissive="#ffffff"
+            emissiveIntensity={0.5}
+          />
+        </mesh>
+
+        {/* Right eye */}
+        <mesh position={[0.07, 0.14, 0.1]}>
+          <sphereGeometry args={[0.055, 8, 8]} />
+          <meshStandardMaterial
+            color="#111111"
+            emissive="#000000"
+            roughness={0.2}
+            metalness={0.8}
+          />
+        </mesh>
+        {/* Right eye shine */}
+        <mesh position={[0.09, 0.16, 0.14]}>
+          <sphereGeometry args={[0.015, 6, 6]} />
+          <meshStandardMaterial
+            color="#ffffff"
+            emissive="#ffffff"
+            emissiveIntensity={0.5}
+          />
+        </mesh>
+
+        {/* Left antenna */}
+        <mesh position={[-0.08, 0.28, 0]} rotation={[0, 0, 0.3]}>
+          <cylinderGeometry args={[0.012, 0.012, 0.12]} />
+          <meshStandardMaterial
+            color="#44ff88"
+            emissive="#22cc66"
+            emissiveIntensity={0.3}
+          />
+        </mesh>
+        {/* Left antenna bobble */}
+        <mesh position={[-0.11, 0.33, 0]}>
+          <sphereGeometry args={[0.025, 6, 6]} />
+          <meshStandardMaterial
+            color="#ffff44"
+            emissive="#ffff44"
+            emissiveIntensity={1}
+          />
+        </mesh>
+
+        {/* Right antenna */}
+        <mesh position={[0.08, 0.28, 0]} rotation={[0, 0, -0.3]}>
+          <cylinderGeometry args={[0.012, 0.012, 0.12]} />
+          <meshStandardMaterial
+            color="#44ff88"
+            emissive="#22cc66"
+            emissiveIntensity={0.3}
+          />
+        </mesh>
+        {/* Right antenna bobble */}
+        <mesh position={[0.11, 0.33, 0]}>
+          <sphereGeometry args={[0.025, 6, 6]} />
+          <meshStandardMaterial
+            color="#ffff44"
+            emissive="#ffff44"
+            emissiveIntensity={1}
+          />
+        </mesh>
+
+        {/* Alien body */}
+        <mesh position={[0, -0.08, 0]}>
+          <capsuleGeometry args={[0.08, 0.12, 8, 12]} />
+          <meshStandardMaterial
+            color="#44ff88"
+            emissive="#22cc66"
+            emissiveIntensity={0.4}
+            roughness={0.6}
+          />
+        </mesh>
+
+        {/* Left arm */}
+        <mesh position={[-0.12, -0.06, 0]} rotation={[0, 0, 0.5]}>
+          <capsuleGeometry args={[0.025, 0.08, 4, 8]} />
+          <meshStandardMaterial
+            color="#44ff88"
+            emissive="#22cc66"
+            emissiveIntensity={0.4}
+          />
+        </mesh>
+
+        {/* Right arm - waving */}
+        <mesh position={[0.14, 0.0, 0]} rotation={[0, 0, -0.8]}>
+          <capsuleGeometry args={[0.025, 0.08, 4, 8]} />
+          <meshStandardMaterial
+            color="#44ff88"
+            emissive="#22cc66"
+            emissiveIntensity={0.4}
+          />
+        </mesh>
+      </group>
+
       {/* Monitor stand base (floating) */}
       <mesh position={[0, -0.75, 0]}>
         <cylinderGeometry args={[0.15, 0.2, 0.3, 8]} />

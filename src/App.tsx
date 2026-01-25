@@ -1,11 +1,14 @@
 import { useEffect, useCallback, useState, useRef } from 'react'
 import Scene from './components/Scene'
 import HUD from './components/HUD'
+import FileModal from './components/FileModal'
 import { useCodebaseState } from './hooks/useCodebaseState'
 import { useEventStream, useDemoEventStream } from './hooks/useEventStream'
 import { useUnits } from './hooks/useUnits'
 import { useTokenUsage } from './hooks/useTokenUsage'
 import type { AgentEvent } from './types'
+
+const FILE_API_URL = 'http://localhost:8766'
 
 interface FileEntry {
   path: string
@@ -52,6 +55,12 @@ function App() {
   const [basePath, setBasePath] = useState('/project')
   const [fileEntries, setFileEntries] = useState<FileEntry[]>(DEMO_FILES)
   const initializedRef = useRef(false)
+
+  // File modal state
+  const [selectedFile, setSelectedFile] = useState<string | null>(null)
+  const [fileContent, setFileContent] = useState<string | null>(null)
+  const [fileLoading, setFileLoading] = useState(false)
+  const [fileError, setFileError] = useState<string | null>(null)
 
   const {
     grid,
@@ -107,12 +116,43 @@ function App() {
     }
   }, [fileEntries, basePath, initializeCodebase])
 
+  // Handle file click - fetch content and show modal
+  const handleFileClick = useCallback(async (path: string) => {
+    setSelectedFile(path)
+    setFileContent(null)
+    setFileError(null)
+    setFileLoading(true)
+
+    try {
+      const response = await fetch(`${FILE_API_URL}/file?path=${encodeURIComponent(path)}`)
+      const data = await response.json()
+
+      if (!response.ok) {
+        setFileError(data.error || 'Failed to load file')
+      } else {
+        setFileContent(data.content)
+      }
+    } catch (err) {
+      setFileError('Failed to connect to server')
+    } finally {
+      setFileLoading(false)
+    }
+  }, [])
+
+  // Close file modal
+  const handleCloseModal = useCallback(() => {
+    setSelectedFile(null)
+    setFileContent(null)
+    setFileError(null)
+  }, [])
+
   return (
     <div style={{ width: '100vw', height: '100vh', position: 'relative', overflow: 'hidden' }}>
       <Scene
         cells={grid}
         exploredPaths={exploredPaths}
         units={units}
+        onFileClick={handleFileClick}
       />
       <HUD
         connected={wsConnected}
@@ -124,6 +164,15 @@ function App() {
         isDemoRunning={demoStream.isRunning}
         tokenUsage={tokenUsage}
       />
+      {selectedFile && (
+        <FileModal
+          path={selectedFile}
+          content={fileContent}
+          loading={fileLoading}
+          error={fileError}
+          onClose={handleCloseModal}
+        />
+      )}
     </div>
   )
 }

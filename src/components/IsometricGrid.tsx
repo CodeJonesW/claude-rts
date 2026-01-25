@@ -1,10 +1,11 @@
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { Text, Billboard, Line } from '@react-three/drei'
 import type { GridCell } from '../types'
 
 interface IsometricGridProps {
   cells: GridCell[]
   exploredPaths: Set<string>
+  onFileClick?: (path: string) => void
 }
 
 // Convert grid coordinates to 3D world position
@@ -49,9 +50,18 @@ function getFileColor(name: string | undefined, isDirectory: boolean): string {
   }
 }
 
-function FileBuilding({ cell, explored }: { cell: GridCell; explored: boolean }) {
+function FileBuilding({
+  cell,
+  explored,
+  onFileClick,
+}: {
+  cell: GridCell
+  explored: boolean
+  onFileClick?: (path: string) => void
+}) {
   const [x, y, z] = gridToWorld(cell.x, cell.y, cell.elevation)
   const isDirectory = cell.node?.type === 'directory'
+  const [hovered, setHovered] = useState(false)
 
   // Get the base color for this file type
   const fileColor = useMemo(() => getFileColor(cell.node?.name, isDirectory), [isDirectory, cell.node?.name])
@@ -60,11 +70,31 @@ function FileBuilding({ cell, explored }: { cell: GridCell; explored: boolean })
   const height = isDirectory ? 0.6 : 0.35 + (cell.node?.accessCount || 0) * 0.1
   const width = isDirectory ? 0.8 : 0.55
 
-  // Glow effect for recently accessed
+  // Glow effect for recently accessed or hovered
   const recentlyAccessed = cell.node?.lastAccessed && (Date.now() - cell.node.lastAccessed) < 2000
 
-  // Strong emissive for visibility - all nodes glow
-  const emissiveIntensity = recentlyAccessed ? 1.2 : explored ? 0.5 : 0.25
+  // Strong emissive for visibility - all nodes glow, brighter on hover
+  const emissiveIntensity = hovered ? 1.5 : recentlyAccessed ? 1.2 : explored ? 0.5 : 0.25
+
+  // Handle click - only for files, not directories
+  const handleClick = () => {
+    if (!isDirectory && cell.node?.path && onFileClick) {
+      onFileClick(cell.node.path)
+    }
+  }
+
+  // Handle hover
+  const handlePointerOver = () => {
+    if (!isDirectory) {
+      setHovered(true)
+      document.body.style.cursor = 'pointer'
+    }
+  }
+
+  const handlePointerOut = () => {
+    setHovered(false)
+    document.body.style.cursor = 'auto'
+  }
 
   return (
     <group position={[x, y, z]}>
@@ -79,11 +109,18 @@ function FileBuilding({ cell, explored }: { cell: GridCell; explored: boolean })
         />
       </mesh>
 
-      {/* Main building - larger with strong glow */}
-      <mesh position={[0, height / 2 + 0.04, 0]} castShadow receiveShadow>
+      {/* Main building - clickable, larger with strong glow */}
+      <mesh
+        position={[0, height / 2 + 0.04, 0]}
+        castShadow
+        receiveShadow
+        onClick={handleClick}
+        onPointerOver={handlePointerOver}
+        onPointerOut={handlePointerOut}
+      >
         <boxGeometry args={[width, height, width]} />
         <meshStandardMaterial
-          color={fileColor}
+          color={hovered ? '#ffffff' : fileColor}
           emissive={fileColor}
           emissiveIntensity={emissiveIntensity}
           roughness={0.4}
@@ -97,7 +134,7 @@ function FileBuilding({ cell, explored }: { cell: GridCell; explored: boolean })
         <meshStandardMaterial
           color="#ffffff"
           emissive={fileColor}
-          emissiveIntensity={explored ? 0.8 : 0.4}
+          emissiveIntensity={hovered ? 1.2 : explored ? 0.8 : 0.4}
           roughness={0.2}
           metalness={0.5}
         />
@@ -179,7 +216,7 @@ function ConnectionLine({
   )
 }
 
-export default function IsometricGrid({ cells, exploredPaths }: IsometricGridProps) {
+export default function IsometricGrid({ cells, exploredPaths, onFileClick }: IsometricGridProps) {
   // Calculate bounds for ground plane (radial layout is centered at origin)
   const groundSize = useMemo(() => {
     if (cells.length === 0) return 20
@@ -266,6 +303,7 @@ export default function IsometricGrid({ cells, exploredPaths }: IsometricGridPro
           key={cell.node?.path || `${cell.x}-${cell.y}`}
           cell={cell}
           explored={cell.node ? exploredPaths.has(cell.node.path) : false}
+          onFileClick={onFileClick}
         />
       ))}
     </group>

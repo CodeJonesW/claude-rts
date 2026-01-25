@@ -222,7 +222,7 @@ function broadcast(event: object) {
 const httpServer = createServer((req: IncomingMessage, res: ServerResponse) => {
   // CORS headers
   res.setHeader('Access-Control-Allow-Origin', '*')
-  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS')
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type')
 
   if (req.method === 'OPTIONS') {
@@ -326,6 +326,51 @@ const httpServer = createServer((req: IncomingMessage, res: ServerResponse) => {
       usage: currentUsage,
       total_cost_usd: currentUsage.total_cost_usd,
     }))
+  } else if (req.method === 'GET' && req.url?.startsWith('/file')) {
+    // Serve file contents
+    console.log('[HTTP] File request:', req.url)
+    const urlParams = new URL(req.url, `http://localhost:${HTTP_PORT}`)
+    const filePath = urlParams.searchParams.get('path')
+
+    if (!filePath) {
+      res.writeHead(400, { 'Content-Type': 'application/json' })
+      res.end(JSON.stringify({ error: 'Missing path parameter' }))
+      return
+    }
+
+    try {
+      if (!existsSync(filePath)) {
+        res.writeHead(404, { 'Content-Type': 'application/json' })
+        res.end(JSON.stringify({ error: 'File not found' }))
+        return
+      }
+
+      const stat = statSync(filePath)
+      if (stat.isDirectory()) {
+        res.writeHead(400, { 'Content-Type': 'application/json' })
+        res.end(JSON.stringify({ error: 'Path is a directory' }))
+        return
+      }
+
+      // Limit file size to 1MB
+      if (stat.size > 1024 * 1024) {
+        res.writeHead(400, { 'Content-Type': 'application/json' })
+        res.end(JSON.stringify({ error: 'File too large (>1MB)' }))
+        return
+      }
+
+      const content = readFileSync(filePath, 'utf-8')
+      res.writeHead(200, { 'Content-Type': 'application/json' })
+      res.end(JSON.stringify({
+        path: filePath,
+        content: content,
+        size: stat.size,
+      }))
+    } catch (err) {
+      console.error('[HTTP] File read error:', err)
+      res.writeHead(500, { 'Content-Type': 'application/json' })
+      res.end(JSON.stringify({ error: 'Failed to read file' }))
+    }
   } else if (req.method === 'GET' && req.url === '/health') {
     res.writeHead(200, { 'Content-Type': 'application/json' })
     res.end(JSON.stringify({

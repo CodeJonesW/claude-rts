@@ -9,9 +9,10 @@ interface SceneProps {
   cells: GridCell[]
   exploredPaths: Set<string>
   units: UnitType[]
+  onFileClick?: (path: string) => void
 }
 
-function SceneContent({ cells, exploredPaths, units }: SceneProps) {
+function SceneContent({ cells, exploredPaths, units, onFileClick }: SceneProps) {
   return (
     <>
       {/* Camera */}
@@ -54,7 +55,7 @@ function SceneContent({ cells, exploredPaths, units }: SceneProps) {
       <fog attach="fog" args={['#0a0a18', 40, 100]} />
 
       {/* Grid and buildings */}
-      <IsometricGrid cells={cells} exploredPaths={exploredPaths} />
+      <IsometricGrid cells={cells} exploredPaths={exploredPaths} onFileClick={onFileClick} />
 
       {/* Units */}
       {units.map(unit => (
@@ -66,7 +67,7 @@ function SceneContent({ cells, exploredPaths, units }: SceneProps) {
   )
 }
 
-export default function Scene({ cells, exploredPaths, units }: SceneProps) {
+export default function Scene({ cells, exploredPaths, units, onFileClick }: SceneProps) {
   return (
     <Canvas
       shadows
@@ -74,7 +75,7 @@ export default function Scene({ cells, exploredPaths, units }: SceneProps) {
       style={{ background: '#0a0a12' }}
     >
       <Suspense fallback={null}>
-        <SceneContent cells={cells} exploredPaths={exploredPaths} units={units} />
+        <SceneContent cells={cells} exploredPaths={exploredPaths} units={units} onFileClick={onFileClick} />
       </Suspense>
     </Canvas>
   )
