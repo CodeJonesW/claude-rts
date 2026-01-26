@@ -1,4 +1,4 @@
-import { useEffect, useRef, useCallback, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Terminal as XTerm } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import { WebLinksAddon } from '@xterm/addon-web-links'
@@ -10,9 +10,8 @@ const isTauri = typeof window !== 'undefined' && ('__TAURI__' in window || '__TA
 interface TerminalProps {
   cwd?: string
   visible?: boolean
-  terminalId?: number | null
+  terminalId: number | null
   onTerminalIdChange?: (id: number | null) => void
-  onClose?: () => void
 }
 
 export default function Terminal({ 
@@ -20,15 +19,12 @@ export default function Terminal({
   visible = true, 
   terminalId: externalTerminalId,
   onTerminalIdChange,
-  onClose 
 }: TerminalProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const terminalRef = useRef<XTerm | null>(null)
   const fitAddonRef = useRef<FitAddon | null>(null)
   const terminalIdRef = useRef<number | null>(null)
   const writeCallbackRef = useRef<((data: string) => void) | null>(null)
-  const [isConnected, setIsConnected] = useState(false)
-  const [error, setError] = useState<string | null>(null)
   const [terminalReady, setTerminalReady] = useState(false)
 
   // Initialize terminal
@@ -121,6 +117,10 @@ export default function Terminal({
     let unlistenExit: (() => void) | null = null
 
     const connect = async () => {
+      // Clear terminal when switching to a different terminal
+      if (terminalRef.current && terminalIdRef.current !== externalTerminalId) {
+        terminalRef.current.clear()
+      }
       try {
         const { invoke } = await import('@tauri-apps/api/core')
         const { listen } = await import('@tauri-apps/api/event')
@@ -142,7 +142,6 @@ export default function Terminal({
           // Try to resize to verify the terminal still exists
           try {
             await invoke('terminal_resize', { id, rows, cols })
-            setIsConnected(true)
             console.log(`[Terminal] Reconnected to terminal ${id}`)
           } catch (err) {
             // Terminal doesn't exist anymore, create a new one
@@ -153,20 +152,18 @@ export default function Terminal({
               cwd: cwd || undefined,
             })
             terminalIdRef.current = id
-            setIsConnected(true)
             if (onTerminalIdChange) {
               onTerminalIdChange(id)
             }
           }
         } else {
-          // Create new terminal
+          // Create new terminal if none provided
           id = await invoke<number>('terminal_create', {
             rows,
             cols,
             cwd: cwd || undefined,
           })
           terminalIdRef.current = id
-          setIsConnected(true)
           if (onTerminalIdChange) {
             onTerminalIdChange(id)
           }
@@ -194,13 +191,8 @@ export default function Terminal({
               terminal.writeln(
                 `\x1b[90mProcess exited with code ${event.payload.code ?? 'unknown'}\x1b[0m`
               )
-              setIsConnected(false)
-              // Clear stored terminal ID since the process has exited
-              // Next time we'll create a fresh terminal
-              terminalIdRef.current = null
-              if (onTerminalIdChange) {
-                onTerminalIdChange(null)
-              }
+              // Note: We don't clear the terminal ID here anymore
+              // The store will handle removal when the tab is closed
             }
           }
         )
@@ -212,8 +204,6 @@ export default function Terminal({
             await invoke('terminal_write', { id, data })
           } catch (err) {
             console.error('Failed to write to terminal:', err)
-            // If write fails, terminal might be closed, mark as disconnected
-            setIsConnected(false)
           }
         }
 
@@ -223,7 +213,6 @@ export default function Terminal({
             await invoke('terminal_resize', { id, rows, cols })
           } catch (err) {
             console.error('Failed to resize terminal:', err)
-            setIsConnected(false)
           }
         })
 
@@ -239,7 +228,6 @@ export default function Terminal({
         }
       } catch (err) {
         console.error('Failed to create terminal:', err)
-        setError(String(err))
         if (terminalRef.current) {
           terminalRef.current.writeln(`\x1b[31mError: ${err}\x1b[0m`)
         }
@@ -260,23 +248,6 @@ export default function Terminal({
     }
   }, [visible])
 
-  // Handle close - actually close the terminal in backend
-  const handleClose = useCallback(async () => {
-    if (terminalIdRef.current !== null) {
-      try {
-        const { invoke } = await import('@tauri-apps/api/core')
-        await invoke('terminal_close', { id: terminalIdRef.current })
-        terminalIdRef.current = null
-        if (onTerminalIdChange) {
-          onTerminalIdChange(null)
-        }
-      } catch (err) {
-        console.error('Failed to close terminal:', err)
-      }
-    }
-    if (onClose) onClose()
-  }, [onClose, onTerminalIdChange])
-
   return (
     <div
       style={{
@@ -284,54 +255,9 @@ export default function Terminal({
         flexDirection: 'column',
         height: '100%',
         background: '#0a0a12',
-        borderRadius: 8,
         overflow: 'hidden',
-        border: '1px solid rgba(100, 150, 255, 0.2)',
       }}
     >
-      {/* Title bar */}
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          padding: '8px 12px',
-          background: 'rgba(20, 25, 35, 0.95)',
-          borderBottom: '1px solid rgba(100, 150, 255, 0.2)',
-        }}
-      >
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <span
-            style={{
-              width: 8,
-              height: 8,
-              borderRadius: '50%',
-              background: isConnected ? '#00ff88' : error ? '#ff5555' : '#ffaa00',
-            }}
-          />
-          <span style={{ color: '#aabbcc', fontSize: 12, fontFamily: 'system-ui' }}>
-            Terminal {terminalIdRef.current ? `#${terminalIdRef.current}` : ''}
-          </span>
-        </div>
-        {onClose && (
-          <button
-            onClick={handleClose}
-            style={{
-              background: 'transparent',
-              border: 'none',
-              color: '#667788',
-              cursor: 'pointer',
-              fontSize: 16,
-              padding: '0 4px',
-            }}
-            onMouseEnter={(e) => (e.currentTarget.style.color = '#ffffff')}
-            onMouseLeave={(e) => (e.currentTarget.style.color = '#667788')}
-          >
-            ×
-          </button>
-        )}
-      </div>
-
       {/* Terminal container */}
       <div
         ref={containerRef}

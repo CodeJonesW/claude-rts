@@ -4,6 +4,7 @@ import HUD from './components/HUD'
 import FileModal from './components/FileModal'
 import ContextMenu from './components/ContextMenu'
 import Terminal from './components/Terminal'
+import TerminalTabs from './components/TerminalTabs'
 import { useCodebaseState } from './hooks/useCodebaseState'
 import { useEventStream, useDemoEventStream } from './hooks/useEventStream'
 import { useUnits } from './hooks/useUnits'
@@ -78,7 +79,7 @@ function App() {
 
   // Terminal state
   const [showTerminal, setShowTerminal] = useState(false)
-  const { terminalId, setTerminalId } = useTerminalStore()
+  const { terminals, activeTerminalId, addTerminal, removeTerminal } = useTerminalStore()
 
   const {
     grid,
@@ -207,6 +208,59 @@ function App() {
     setFileError(null)
   }, [])
 
+  // Terminal handlers
+  const handleToggleTerminal = useCallback(() => {
+    if (!showTerminal) {
+      // Show terminal - if no terminals exist, Terminal component will create one
+      setShowTerminal(true)
+    } else {
+      setShowTerminal(false)
+    }
+  }, [showTerminal])
+
+  const handleNewTerminal = useCallback(async () => {
+    // Show terminal panel if not visible
+    if (!showTerminal) {
+      setShowTerminal(true)
+    }
+    
+    // Create a new terminal in the backend
+    try {
+      const { invoke } = await import('@tauri-apps/api/core')
+      // Use default dimensions - the terminal will resize when it mounts
+      const id = await invoke<number>('terminal_create', {
+        rows: 24,
+        cols: 80,
+        cwd: basePath || undefined,
+      })
+      addTerminal(id)
+    } catch (err) {
+      console.error('Failed to create new terminal:', err)
+    }
+  }, [showTerminal, basePath, addTerminal])
+
+  const handleCloseTerminal = useCallback(
+    async (id: number) => {
+      try {
+        const { invoke } = await import('@tauri-apps/api/core')
+        await invoke('terminal_close', { id })
+        removeTerminal(id)
+        // If we closed the last terminal, hide the panel
+        if (terminals.length === 1) {
+          setShowTerminal(false)
+        }
+      } catch (err) {
+        console.error('Failed to close terminal:', err)
+        // Still remove from store even if backend close fails
+        removeTerminal(id)
+        if (terminals.length === 1) {
+          setShowTerminal(false)
+        }
+      }
+    },
+    [terminals.length, removeTerminal]
+  )
+
   return (
     <div style={{ width: '100vw', height: '100vh', position: 'relative', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
       <div style={{ flex: showTerminal ? '1 1 60%' : '1 1 100%', position: 'relative', minHeight: 0 }}>
@@ -223,24 +277,40 @@ function App() {
       {/* Terminal Panel */}
       {showTerminal && (
         <div
-          style={{ flex: '0 0 40%', minHeight: 200, maxHeight: '50vh' }}
+          style={{
+            flex: '0 0 40%',
+            minHeight: 200,
+            maxHeight: '50vh',
+            display: 'flex',
+            flexDirection: 'column',
+            background: '#0a0a12',
+            borderRadius: 8,
+            overflow: 'hidden',
+            border: '1px solid rgba(100, 150, 255, 0.2)',
+          }}
           onKeyDown={(e) => e.stopPropagation()}
           onKeyUp={(e) => e.stopPropagation()}
           onKeyPress={(e) => e.stopPropagation()}
         >
-          <Terminal
-            cwd={basePath}
-            visible={showTerminal}
-            terminalId={terminalId}
-            onTerminalIdChange={setTerminalId}
-            onClose={() => setShowTerminal(false)}
-          />
+          <TerminalTabs onNewTerminal={handleNewTerminal} onCloseTerminal={handleCloseTerminal} />
+          <div style={{ flex: 1, minHeight: 0 }}>
+            <Terminal
+              cwd={basePath}
+              visible={showTerminal}
+              terminalId={activeTerminalId}
+              onTerminalIdChange={(id) => {
+                if (id !== null) {
+                  addTerminal(id)
+                }
+              }}
+            />
+          </div>
         </div>
       )}
 
       {/* Terminal Toggle Button */}
       <button
-        onClick={() => setShowTerminal(!showTerminal)}
+        onClick={handleToggleTerminal}
         style={{
           position: 'fixed',
           bottom: showTerminal ? 'calc(40% + 10px)' : 10,
