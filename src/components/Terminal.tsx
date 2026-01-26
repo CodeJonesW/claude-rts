@@ -10,10 +10,18 @@ const isTauri = typeof window !== 'undefined' && ('__TAURI__' in window || '__TA
 interface TerminalProps {
   cwd?: string
   visible?: boolean
+  terminalId?: number | null
+  onTerminalIdChange?: (id: number | null) => void
   onClose?: () => void
 }
 
-export default function Terminal({ cwd, visible = true, onClose }: TerminalProps) {
+export default function Terminal({ 
+  cwd, 
+  visible = true, 
+  terminalId: externalTerminalId,
+  onTerminalIdChange,
+  onClose 
+}: TerminalProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const terminalRef = useRef<XTerm | null>(null)
   const fitAddonRef = useRef<FitAddon | null>(null)
@@ -109,6 +117,8 @@ export default function Terminal({ cwd, visible = true, onClose }: TerminalProps
     }
 
     let cleanup: (() => void) | null = null
+    let unlistenOutput: (() => void) | null = null
+    let unlistenExit: (() => void) | null = null
 
     const connect = async () => {
       try {
@@ -122,19 +132,50 @@ export default function Terminal({ cwd, visible = true, onClose }: TerminalProps
         const cols = terminal.cols
         const rows = terminal.rows
 
-        // Create terminal in backend
-        const id = await invoke<number>('terminal_create', {
-          rows,
-          cols,
-          cwd: cwd || undefined,
-        })
+        let id: number
 
-        terminalIdRef.current = id
-        setIsConnected(true)
+        // Try to reconnect to existing terminal if provided
+        if (externalTerminalId !== null && externalTerminalId !== undefined) {
+          id = externalTerminalId
+          terminalIdRef.current = id
+          
+          // Try to resize to verify the terminal still exists
+          try {
+            await invoke('terminal_resize', { id, rows, cols })
+            setIsConnected(true)
+            console.log(`[Terminal] Reconnected to terminal ${id}`)
+          } catch (err) {
+            // Terminal doesn't exist anymore, create a new one
+            console.log(`[Terminal] Terminal ${id} no longer exists, creating new terminal`)
+            id = await invoke<number>('terminal_create', {
+              rows,
+              cols,
+              cwd: cwd || undefined,
+            })
+            terminalIdRef.current = id
+            setIsConnected(true)
+            if (onTerminalIdChange) {
+              onTerminalIdChange(id)
+            }
+          }
+        } else {
+          // Create new terminal
+          id = await invoke<number>('terminal_create', {
+            rows,
+            cols,
+            cwd: cwd || undefined,
+          })
+          terminalIdRef.current = id
+          setIsConnected(true)
+          if (onTerminalIdChange) {
+            onTerminalIdChange(id)
+          }
+        }
+
         terminal.focus()
 
         // Listen for terminal output
-        const unlistenOutput = await listen<{ id: number; data: string }>(
+        const outputUnlisten = await listen<{ id: number; data: string }>(
           'terminal-output',
           (event) => {
             if (event.payload.id === id) {
@@ -142,9 +183,10 @@ export default function Terminal({ cwd, visible = true, onClose }: TerminalProps
             }
           }
         )
+        unlistenOutput = outputUnlisten
 
         // Listen for terminal exit
-        const unlistenExit = await listen<{ id: number; code: number | null }>(
+        const exitUnlisten = await listen<{ id: number; code: number | null }>(
           'terminal-exit',
           (event) => {
             if (event.payload.id === id) {
@@ -153,9 +195,16 @@ export default function Terminal({ cwd, visible = true, onClose }: TerminalProps
                 `\x1b[90mProcess exited with code ${event.payload.code ?? 'unknown'}\x1b[0m`
               )
               setIsConnected(false)
+              // Clear stored terminal ID since the process has exited
+              // Next time we'll create a fresh terminal
+              terminalIdRef.current = null
+              if (onTerminalIdChange) {
+                onTerminalIdChange(null)
+              }
             }
           }
         )
+        unlistenExit = exitUnlisten
 
         // Set up the write callback to send input to backend
         writeCallbackRef.current = async (data: string) => {
@@ -163,6 +212,8 @@ export default function Terminal({ cwd, visible = true, onClose }: TerminalProps
             await invoke('terminal_write', { id, data })
           } catch (err) {
             console.error('Failed to write to terminal:', err)
+            // If write fails, terminal might be closed, mark as disconnected
+            setIsConnected(false)
           }
         }
 
@@ -172,6 +223,7 @@ export default function Terminal({ cwd, visible = true, onClose }: TerminalProps
             await invoke('terminal_resize', { id, rows, cols })
           } catch (err) {
             console.error('Failed to resize terminal:', err)
+            setIsConnected(false)
           }
         })
 
@@ -180,9 +232,10 @@ export default function Terminal({ cwd, visible = true, onClose }: TerminalProps
 
         cleanup = () => {
           writeCallbackRef.current = null
-          unlistenOutput()
-          unlistenExit()
-          invoke('terminal_close', { id }).catch(console.error)
+          if (unlistenOutput) unlistenOutput()
+          if (unlistenExit) unlistenExit()
+          // Don't close terminal on unmount - only close when explicitly requested
+          // This allows reconnecting to the same terminal later
         }
       } catch (err) {
         console.error('Failed to create terminal:', err)
@@ -198,7 +251,7 @@ export default function Terminal({ cwd, visible = true, onClose }: TerminalProps
     return () => {
       if (cleanup) cleanup()
     }
-  }, [terminalReady, cwd])
+  }, [terminalReady, cwd, externalTerminalId, onTerminalIdChange])
 
   // Focus terminal when visible
   useEffect(() => {
@@ -207,10 +260,22 @@ export default function Terminal({ cwd, visible = true, onClose }: TerminalProps
     }
   }, [visible])
 
-  // Handle close
-  const handleClose = useCallback(() => {
+  // Handle close - actually close the terminal in backend
+  const handleClose = useCallback(async () => {
+    if (terminalIdRef.current !== null) {
+      try {
+        const { invoke } = await import('@tauri-apps/api/core')
+        await invoke('terminal_close', { id: terminalIdRef.current })
+        terminalIdRef.current = null
+        if (onTerminalIdChange) {
+          onTerminalIdChange(null)
+        }
+      } catch (err) {
+        console.error('Failed to close terminal:', err)
+      }
+    }
     if (onClose) onClose()
-  }, [onClose])
+  }, [onClose, onTerminalIdChange])
 
   return (
     <div

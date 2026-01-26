@@ -8,6 +8,7 @@ import { useCodebaseState } from './hooks/useCodebaseState'
 import { useEventStream, useDemoEventStream } from './hooks/useEventStream'
 import { useUnits } from './hooks/useUnits'
 import { useTokenUsage } from './hooks/useTokenUsage'
+import { useTerminalStore } from './stores/terminalStore'
 import type { AgentEvent, GridCell } from './types'
 
 const FILE_API_URL = 'http://localhost:8766'
@@ -77,6 +78,7 @@ function App() {
 
   // Terminal state
   const [showTerminal, setShowTerminal] = useState(false)
+  const { terminalId, setTerminalId } = useTerminalStore()
 
   const {
     grid,
@@ -229,6 +231,8 @@ function App() {
           <Terminal
             cwd={basePath}
             visible={showTerminal}
+            terminalId={terminalId}
+            onTerminalIdChange={setTerminalId}
             onClose={() => setShowTerminal(false)}
           />
         </div>

@@ -35,6 +35,7 @@ export interface AgentEvent {
   path?: string
   timestamp: number
   details?: string
+  agentId?: string
   // Legacy token fields (for backwards compat)
   tokensUsed?: number
   tokensRemaining?: number
