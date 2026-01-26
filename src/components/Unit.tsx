@@ -1,5 +1,5 @@
 import { useRef } from 'react'
-import { useFrame } from '@react-three/fiber'
+import { useFrame, useThree } from '@react-three/fiber'
 import * as THREE from 'three'
 import type { Unit as UnitType } from '../types'
 import { gridToWorld } from './IsometricGrid'
@@ -10,8 +10,10 @@ interface UnitProps {
 
 export default function Unit({ unit }: UnitProps) {
   const groupRef = useRef<THREE.Group>(null)
+  const monitorRef = useRef<THREE.Group>(null)
   const screenRef = useRef<THREE.Mesh>(null)
   const startTime = useRef(Date.now())
+  const { camera } = useThree()
 
   // Floating height above the grid
   const FLOAT_HEIGHT = 3
@@ -69,6 +71,19 @@ export default function Unit({ unit }: UnitProps) {
         material.emissiveIntensity = 1.0 + Math.sin(elapsed * 3) * 0.2
       }
     }
+
+    // Make monitor face the camera (Y-axis billboard)
+    if (monitorRef.current && groupRef.current) {
+      const monitorPos = groupRef.current.position
+      const cameraPos = camera.position
+
+      // Calculate angle to camera on XZ plane only
+      const angle = Math.atan2(
+        cameraPos.x - monitorPos.x,
+        cameraPos.z - monitorPos.z
+      )
+      monitorRef.current.rotation.y = angle
+    }
   })
 
   // Screen color based on state
@@ -77,6 +92,8 @@ export default function Unit({ unit }: UnitProps) {
 
   return (
     <group ref={groupRef} position={[0, FLOAT_HEIGHT, 0]}>
+      {/* Monitor group - rotates to face camera */}
+      <group ref={monitorRef}>
       {/* Main monitor frame */}
       <mesh castShadow>
         <boxGeometry args={[1.8, 1.2, 0.15]} />
@@ -288,6 +305,7 @@ export default function Unit({ unit }: UnitProps) {
         distance={8}
         color={screenColor}
       />
+      </group>
 
       {/* Downward light beam when working */}
       {unit.state === 'working' && (
