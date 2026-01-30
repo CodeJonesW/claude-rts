@@ -12,13 +12,15 @@ interface TerminalProps {
   visible?: boolean
   terminalId: number | null
   onTerminalIdChange?: (id: number | null) => void
+  onWriteReady?: (writeFn: (data: string) => Promise<void>) => void
 }
 
-export default function Terminal({ 
-  cwd, 
-  visible = true, 
+export default function Terminal({
+  cwd,
+  visible = true,
   terminalId: externalTerminalId,
   onTerminalIdChange,
+  onWriteReady,
 }: TerminalProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const terminalRef = useRef<XTerm | null>(null)
@@ -207,6 +209,13 @@ export default function Terminal({
           }
         }
 
+        // Expose write function to parent
+        if (onWriteReady) {
+          onWriteReady(async (data: string) => {
+            await invoke('terminal_write', { id, data })
+          })
+        }
+
         // Handle resize
         terminal.onResize(async ({ cols, rows }) => {
           try {
@@ -239,7 +248,7 @@ export default function Terminal({
     return () => {
       if (cleanup) cleanup()
     }
-  }, [terminalReady, cwd, externalTerminalId, onTerminalIdChange])
+  }, [terminalReady, cwd, externalTerminalId, onTerminalIdChange, onWriteReady])
 
   // Focus terminal when visible
   useEffect(() => {

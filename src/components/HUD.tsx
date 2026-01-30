@@ -22,6 +22,10 @@ interface HUDProps {
   tokenUsage: TokenUsage
   onSetCostAlert: (threshold: number | null) => void
   terminalOpen?: boolean
+  viewRoot?: string
+  basePath?: string
+  onNavigateTo?: (path: string) => void
+  onNavigateUp?: () => void
 }
 
 export default function HUD({
@@ -33,8 +37,18 @@ export default function HUD({
   isDemoRunning,
   tokenUsage,
   terminalOpen = false,
+  viewRoot,
+  basePath,
+  onNavigateTo,
+  onNavigateUp,
 }: HUDProps) {
   const recentEvents = eventHistory.slice(-8).reverse()
+
+  // Compute breadcrumb segments
+  const showBreadcrumb = viewRoot && basePath && viewRoot !== basePath
+  const basePathName = basePath?.split('/').pop() || 'root'
+  const relativePath = showBreadcrumb ? viewRoot.replace(basePath + '/', '') : ''
+  const segments = relativePath ? relativePath.split('/') : []
 
   return (
     <div style={{
@@ -85,7 +99,83 @@ export default function HUD({
           </div>
         </div>
 
-
+        {/* Center - Breadcrumb Navigation */}
+        {showBreadcrumb && onNavigateTo && onNavigateUp && (
+          <div style={{
+            background: 'rgba(0, 0, 0, 0.7)',
+            border: '1px solid #00ff88',
+            padding: '8px 16px',
+            borderRadius: 4,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
+            pointerEvents: 'auto',
+          }}>
+            <span
+              onClick={() => onNavigateTo(basePath)}
+              style={{
+                cursor: 'pointer',
+                opacity: 0.8,
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.opacity = '1'
+                e.currentTarget.style.textDecoration = 'underline'
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.opacity = '0.8'
+                e.currentTarget.style.textDecoration = 'none'
+              }}
+            >
+              {basePathName}
+            </span>
+            {segments.map((seg, i) => {
+              const pathUpToSegment = basePath + '/' + segments.slice(0, i + 1).join('/')
+              return (
+                <span key={i} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span style={{ opacity: 0.5 }}>/</span>
+                  <span
+                    onClick={() => onNavigateTo(pathUpToSegment)}
+                    style={{
+                      cursor: 'pointer',
+                      opacity: i === segments.length - 1 ? 1 : 0.8,
+                      fontWeight: i === segments.length - 1 ? 'bold' : 'normal',
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.textDecoration = 'underline'
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.textDecoration = 'none'
+                    }}
+                  >
+                    {seg}
+                  </span>
+                </span>
+              )
+            })}
+            <button
+              onClick={onNavigateUp}
+              style={{
+                marginLeft: 8,
+                padding: '4px 8px',
+                background: 'transparent',
+                border: '1px solid rgba(0, 255, 136, 0.5)',
+                color: '#00ff88',
+                borderRadius: 4,
+                cursor: 'pointer',
+                fontFamily: 'monospace',
+                fontSize: 12,
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = 'rgba(0, 255, 136, 0.2)'
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = 'transparent'
+              }}
+            >
+              ↑ Up
+            </button>
+          </div>
+        )}
 
         {/* Right - Resources */}
         <div style={{

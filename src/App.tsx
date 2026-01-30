@@ -69,6 +69,9 @@ function App() {
   // Hidden directories state
   const [hiddenPaths, setHiddenPaths] = useState<Set<string>>(new Set())
 
+  // View root for folder navigation (separate from basePath)
+  const [viewRoot, setViewRoot] = useState<string>(basePath)
+
   // Context menu state
   const [contextMenu, setContextMenu] = useState<{
     x: number
@@ -81,23 +84,41 @@ function App() {
   const [showTerminal, setShowTerminal] = useState(false)
   const { terminals, activeTerminalId, addTerminal, removeTerminal } = useTerminalStore()
 
+  // Terminal write ref for navigation cd commands
+  const terminalWriteRef = useRef<((data: string) => Promise<void>) | null>(null)
+
   const {
     grid,
     exploredPaths,
     initializeCodebase,
     handleEvent: handleCodebaseEvent,
-    getCellByPath,
+    getSubtreeGrid,
+    getViewCellByPath,
   } = useCodebaseState(basePath)
 
-  const { units, handleEvent: handleUnitEvent } = useUnits(getCellByPath)
+  // Reset viewRoot when basePath changes
+  useEffect(() => {
+    setViewRoot(basePath)
+  }, [basePath])
+
+  // Create view-aware cell lookup for units
+  const getViewAwareCellByPath = useCallback((path: string) => {
+    return getViewCellByPath(path, viewRoot)
+  }, [getViewCellByPath, viewRoot])
+
+  const { units, handleEvent: handleUnitEvent, triggerTeleport, triggerBeamUp } = useUnits(getViewAwareCellByPath)
 
   const { tokenUsage, handleEvent: handleTokenEvent, fetchUsage, setAlertThreshold } = useTokenUsage()
 
-  // Filter grid to hide children of hidden directories
+  // Filter grid to hide children of hidden directories and apply viewRoot
   const filteredGrid = useMemo(() => {
-    if (hiddenPaths.size === 0) return grid
+    // Get grid for current view root
+    const viewGrid = getSubtreeGrid(viewRoot)
 
-    return grid.filter((cell: GridCell) => {
+    // Apply hidden paths filter
+    if (hiddenPaths.size === 0) return viewGrid
+
+    return viewGrid.filter((cell: GridCell) => {
       if (!cell.node?.path) return true
 
       // Check if any hidden path is a parent of this cell
@@ -108,7 +129,7 @@ function App() {
       }
       return true
     })
-  }, [grid, hiddenPaths])
+  }, [getSubtreeGrid, viewRoot, hiddenPaths])
 
   // Handle right-click on node
   const handleContextMenu = useCallback((e: { x: number; y: number; path: string; isDirectory: boolean }) => {
@@ -128,6 +149,44 @@ function App() {
       return next
     })
   }, [])
+
+  // Navigation handlers
+  const canNavigateUp = viewRoot !== basePath
+
+  const handleNavigateInto = useCallback(async (path: string) => {
+    // Trigger teleport animation, then navigate
+    triggerTeleport(() => {
+      setViewRoot(path)
+    })
+    if (terminalWriteRef.current) {
+      await terminalWriteRef.current(`cd "${path}"\r`)
+    }
+  }, [triggerTeleport])
+
+  const handleNavigateTo = useCallback(async (path: string) => {
+    // Trigger teleport animation, then navigate
+    triggerTeleport(() => {
+      setViewRoot(path)
+    })
+    if (terminalWriteRef.current) {
+      await terminalWriteRef.current(`cd "${path}"\r`)
+    }
+  }, [triggerTeleport])
+
+  const handleNavigateUp = useCallback(async () => {
+    if (!canNavigateUp) return
+
+    const parentPath = viewRoot.split('/').slice(0, -1).join('/') || basePath
+    const newRoot = parentPath.startsWith(basePath) ? parentPath : basePath
+
+    // Trigger UFO beam up animation, then navigate
+    triggerBeamUp(() => {
+      setViewRoot(newRoot)
+    })
+    if (terminalWriteRef.current) {
+      await terminalWriteRef.current(`cd "${newRoot}"\r`)
+    }
+  }, [viewRoot, basePath, canNavigateUp, triggerBeamUp])
 
   // Handle events from WebSocket
   const handleEvent = useCallback((event: AgentEvent & { basePath?: string; files?: FileEntry[] }) => {
@@ -303,6 +362,9 @@ function App() {
                   addTerminal(id)
                 }
               }}
+              onWriteReady={(fn) => {
+                terminalWriteRef.current = fn
+              }}
             />
           </div>
         </div>
@@ -341,6 +403,10 @@ function App() {
         tokenUsage={tokenUsage}
         onSetCostAlert={setAlertThreshold}
         terminalOpen={showTerminal}
+        viewRoot={viewRoot}
+        basePath={basePath}
+        onNavigateTo={handleNavigateTo}
+        onNavigateUp={handleNavigateUp}
       />
       {selectedFile && (
         <FileModal
@@ -358,8 +424,11 @@ function App() {
           path={contextMenu.path}
           isDirectory={contextMenu.isDirectory}
           isHidden={hiddenPaths.has(contextMenu.path)}
+          canNavigateUp={canNavigateUp}
           onHide={() => handleHidePath(contextMenu.path)}
           onShow={() => handleShowPath(contextMenu.path)}
+          onNavigateInto={() => handleNavigateInto(contextMenu.path)}
+          onNavigateUp={handleNavigateUp}
           onClose={() => setContextMenu(null)}
         />
       )}

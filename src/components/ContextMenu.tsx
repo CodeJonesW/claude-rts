@@ -6,8 +6,11 @@ interface ContextMenuProps {
   path: string
   isDirectory: boolean
   isHidden: boolean
+  canNavigateUp: boolean
   onHide: () => void
   onShow: () => void
+  onNavigateInto: () => void
+  onNavigateUp: () => void
   onClose: () => void
 }
 
@@ -17,8 +20,11 @@ export default function ContextMenu({
   path,
   isDirectory,
   isHidden,
+  canNavigateUp,
   onHide,
   onShow,
+  onNavigateInto,
+  onNavigateUp,
   onClose,
 }: ContextMenuProps) {
   const menuRef = useRef<HTMLDivElement>(null)
@@ -82,6 +88,70 @@ export default function ContextMenu({
         {fileName}
       </div>
 
+      {/* Navigate Into - directories only */}
+      {isDirectory && (
+        <button
+          onClick={() => {
+            onNavigateInto()
+            onClose()
+          }}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
+            width: '100%',
+            padding: '8px 12px',
+            background: 'transparent',
+            border: 'none',
+            color: '#ddeeff',
+            cursor: 'pointer',
+            textAlign: 'left',
+            fontSize: 13,
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.background = 'rgba(100, 150, 255, 0.2)'
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.background = 'transparent'
+          }}
+        >
+          <span style={{ fontSize: 14 }}>→</span>
+          Navigate into
+        </button>
+      )}
+
+      {/* Navigate Up - when not at root */}
+      {canNavigateUp && (
+        <button
+          onClick={() => {
+            onNavigateUp()
+            onClose()
+          }}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
+            width: '100%',
+            padding: '8px 12px',
+            background: 'transparent',
+            border: 'none',
+            color: '#ddeeff',
+            cursor: 'pointer',
+            textAlign: 'left',
+            fontSize: 13,
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.background = 'rgba(100, 150, 255, 0.2)'
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.background = 'transparent'
+          }}
+        >
+          <span style={{ fontSize: 14 }}>↑</span>
+          Navigate up
+        </button>
+      )}
+
       {isDirectory && (
         <button
           onClick={() => {
@@ -115,18 +185,6 @@ export default function ContextMenu({
           <span style={{ fontSize: 14 }}>{isHidden ? '▶' : '▼'}</span>
           {isHidden ? 'Show contents' : 'Hide contents'}
         </button>
-      )}
-
-      {!isDirectory && (
-        <div
-          style={{
-            padding: '8px 12px',
-            color: '#667788',
-            fontStyle: 'italic',
-          }}
-        >
-          Files cannot be hidden
-        </div>
       )}
     </div>
   )

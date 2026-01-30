@@ -12,11 +12,17 @@ export default function Unit({ unit }: UnitProps) {
   const groupRef = useRef<THREE.Group>(null)
   const monitorRef = useRef<THREE.Group>(null)
   const screenRef = useRef<THREE.Mesh>(null)
+  const ufoRef = useRef<THREE.Group>(null)
   const startTime = useRef(Date.now())
   const { camera } = useThree()
 
   // Floating height above the grid
   const FLOAT_HEIGHT = 3
+
+  // Animation state refs
+  const teleportPhaseRef = useRef(0)
+  const beamUpPhaseRef = useRef(0)
+  const prevStateRef = useRef(unit.state)
 
   // Animate position - throttled to reduce CPU load
   const lastUpdateRef = useRef(0)
@@ -27,11 +33,106 @@ export default function Unit({ unit }: UnitProps) {
     const now = Date.now()
     const elapsed = (now - startTime.current) / 1000
 
+    // Calculate animation progress
+    const animElapsed = unit.animationStart ? (now - unit.animationStart) / 1000 : 0
+
     // Throttle position updates to ~30fps
     const shouldUpdatePosition = now - lastUpdateRef.current > 33
 
     if (shouldUpdatePosition) {
       lastUpdateRef.current = now
+
+      // Handle teleport animation
+      if (unit.state === 'teleporting') {
+        teleportPhaseRef.current = animElapsed
+
+        // Rapid flicker effect
+        const flickerRate = 30 // flickers per second
+        const flicker = Math.sin(animElapsed * flickerRate * Math.PI * 2) > 0
+        groupRef.current.visible = flicker || animElapsed > 0.6
+
+        // Scale effect - shrink then expand
+        const progress = animElapsed / 0.8
+        let scale = 1
+        if (progress < 0.3) {
+          // Shrink
+          scale = 1 - progress * 2
+        } else if (progress < 0.5) {
+          // Tiny
+          scale = 0.1
+        } else if (progress < 0.8) {
+          // Hidden phase
+          scale = 0
+          groupRef.current.visible = false
+        } else {
+          // Reappear
+          scale = (progress - 0.8) * 5
+          groupRef.current.visible = true
+        }
+        groupRef.current.scale.setScalar(Math.max(0, scale))
+
+        // Glitch offset
+        if (flicker && animElapsed < 0.5) {
+          groupRef.current.position.x += (Math.random() - 0.5) * 0.3
+          groupRef.current.position.z += (Math.random() - 0.5) * 0.3
+        }
+
+        return // Skip normal position updates during teleport
+      }
+
+      // Handle beam up animation (UFO abduction)
+      if (unit.state === 'beaming_up') {
+        beamUpPhaseRef.current = animElapsed
+
+        const progress = animElapsed / 1.5
+
+        // Sync UFO XZ position with agent
+        if (ufoRef.current && groupRef.current) {
+          ufoRef.current.position.x = groupRef.current.position.x
+          ufoRef.current.position.z = groupRef.current.position.z
+
+          if (progress < 0.3) {
+            // UFO descends from above
+            const ufoProgress = progress / 0.3
+            ufoRef.current.position.y = 18 - ufoProgress * 10 // 18 -> 8
+            ufoRef.current.visible = true
+          } else if (progress < 0.8) {
+            // UFO hovers at 8, agent rises into tractor beam
+            ufoRef.current.position.y = 8
+            const riseProgress = (progress - 0.3) / 0.5
+            groupRef.current.position.y = FLOAT_HEIGHT + riseProgress * 4.5 // Rise to ~7.5
+            // Spin agent while rising
+            groupRef.current.rotation.y = riseProgress * Math.PI * 4
+            // Shrink agent as it gets "beamed up"
+            const shrinkScale = 1 - riseProgress * 0.7
+            groupRef.current.scale.setScalar(Math.max(0.3, shrinkScale))
+          } else {
+            // UFO (with tiny agent) flies away
+            const flyProgress = (progress - 0.8) / 0.2
+            ufoRef.current.position.y = 8 + flyProgress * 25
+            groupRef.current.position.y = 7.5 + flyProgress * 25
+            groupRef.current.scale.setScalar(0.3)
+            groupRef.current.visible = flyProgress < 0.3
+            ufoRef.current.visible = flyProgress < 0.9
+          }
+        }
+
+        return // Skip normal position updates during beam up
+      }
+
+      // Check if we just finished an animation - snap to position instead of lerping
+      const justFinishedAnimation =
+        (prevStateRef.current === 'teleporting' || prevStateRef.current === 'beaming_up') &&
+        unit.state === 'idle'
+
+      // Reset animation refs when not animating
+      teleportPhaseRef.current = 0
+      beamUpPhaseRef.current = 0
+      groupRef.current.visible = true
+      groupRef.current.scale.setScalar(1)
+
+      // Update prev state
+      prevStateRef.current = unit.state
 
       // Calculate target position above the file being accessed
       let targetX = 0
@@ -43,17 +144,24 @@ export default function Unit({ unit }: UnitProps) {
         targetZ = worldPos[2]
       }
 
-      // Smooth movement towards target
-      const currentPos = groupRef.current.position
-      const lerpSpeed = 0.05 // Slightly faster to compensate for lower update rate
-      const newX = currentPos.x + (targetX - currentPos.x) * lerpSpeed
-      const newZ = currentPos.z + (targetZ - currentPos.z) * lerpSpeed
-
       // Gentle floating motion
       const floatOffset = Math.sin(elapsed * 1.5) * 0.15
       const newY = FLOAT_HEIGHT + floatOffset
+      const currentPos = groupRef.current.position
 
-      groupRef.current.position.set(newX, newY, newZ)
+      // If just finished animation, snap to position immediately
+      if (justFinishedAnimation) {
+        groupRef.current.position.set(targetX, newY, targetZ)
+        groupRef.current.rotation.y = 0
+      } else {
+        // Smooth movement towards target
+        const lerpSpeed = 0.05 // Slightly faster to compensate for lower update rate
+        const newX = currentPos.x + (targetX - currentPos.x) * lerpSpeed
+        const newZ = currentPos.z + (targetZ - currentPos.z) * lerpSpeed
+
+        groupRef.current.position.set(newX, newY, newZ)
+        groupRef.current.rotation.y = 0 // Reset Y rotation
+      }
 
       // Gentle rotation/tilt based on movement
       const moveX = targetX - currentPos.x
@@ -67,13 +175,16 @@ export default function Unit({ unit }: UnitProps) {
       const material = screenRef.current.material as THREE.MeshStandardMaterial
       if (unit.state === 'working') {
         material.emissiveIntensity = 1.5 + Math.sin(elapsed * 20) * 0.5
+      } else if (unit.state === 'teleporting') {
+        // Intense flicker during teleport
+        material.emissiveIntensity = 3 + Math.sin(elapsed * 50) * 2
       } else {
         material.emissiveIntensity = 1.0 + Math.sin(elapsed * 3) * 0.2
       }
     }
 
-    // Make monitor face the camera (Y-axis billboard)
-    if (monitorRef.current && groupRef.current) {
+    // Make monitor face the camera (Y-axis billboard) - but not during beam up
+    if (monitorRef.current && groupRef.current && unit.state !== 'beaming_up') {
       const monitorPos = groupRef.current.position
       const cameraPos = camera.position
 
@@ -86,11 +197,15 @@ export default function Unit({ unit }: UnitProps) {
     }
   })
 
+  // Teleport particle color
+  const teleportColor = '#00ffff'
+
   // Screen color based on state
   const screenColor = unit.state === 'working' ? '#00ffaa' : '#00ff88'
   const frameColor = '#1a1a2a'
 
   return (
+    <>
     <group ref={groupRef} position={[0, FLOAT_HEIGHT, 0]}>
       {/* Monitor group - rotates to face camera */}
       <group ref={monitorRef}>
@@ -333,6 +448,140 @@ export default function Unit({ unit }: UnitProps) {
           </mesh>
         </>
       )}
+
+      {/* Teleport effect */}
+      {unit.state === 'teleporting' && (
+        <>
+          {/* Glowing ring */}
+          <mesh position={[0, -2, 0]} rotation={[Math.PI / 2, 0, 0]}>
+            <torusGeometry args={[1.5, 0.1, 8, 32]} />
+            <meshStandardMaterial
+              color={teleportColor}
+              emissive={teleportColor}
+              emissiveIntensity={3}
+              transparent
+              opacity={0.8}
+            />
+          </mesh>
+          {/* Vertical energy lines */}
+          {[0, 1, 2, 3, 4, 5].map((i) => (
+            <mesh
+              key={i}
+              position={[
+                Math.cos((i / 6) * Math.PI * 2) * 1.2,
+                0,
+                Math.sin((i / 6) * Math.PI * 2) * 1.2,
+              ]}
+            >
+              <cylinderGeometry args={[0.03, 0.03, 6, 6]} />
+              <meshStandardMaterial
+                color={teleportColor}
+                emissive={teleportColor}
+                emissiveIntensity={2}
+                transparent
+                opacity={0.6}
+              />
+            </mesh>
+          ))}
+          {/* Central glow */}
+          <pointLight
+            position={[0, 0, 0]}
+            intensity={10}
+            distance={8}
+            color={teleportColor}
+          />
+        </>
+      )}
+
     </group>
+
+    {/* UFO for beam up - positioned in world space, follows agent XZ */}
+    {unit.state === 'beaming_up' && (
+      <group ref={ufoRef} position={[0, 12, 0]}>
+        {/* UFO body - classic saucer shape */}
+        <mesh>
+          <sphereGeometry args={[2, 16, 8, 0, Math.PI * 2, 0, Math.PI / 2]} />
+          <meshStandardMaterial
+            color="#333344"
+            metalness={0.9}
+            roughness={0.2}
+          />
+        </mesh>
+        {/* UFO dome */}
+        <mesh position={[0, 0.3, 0]}>
+          <sphereGeometry args={[0.8, 12, 8]} />
+          <meshStandardMaterial
+            color="#4488ff"
+            emissive="#4488ff"
+            emissiveIntensity={0.5}
+            transparent
+            opacity={0.7}
+          />
+        </mesh>
+        {/* UFO rim */}
+        <mesh position={[0, -0.2, 0]}>
+          <torusGeometry args={[2, 0.3, 8, 24]} />
+          <meshStandardMaterial
+            color="#555566"
+            metalness={0.9}
+            roughness={0.1}
+          />
+        </mesh>
+        {/* UFO lights around rim */}
+        {[0, 1, 2, 3, 4, 5, 6, 7].map((i) => (
+          <mesh
+            key={i}
+            position={[
+              Math.cos((i / 8) * Math.PI * 2) * 2.1,
+              -0.2,
+              Math.sin((i / 8) * Math.PI * 2) * 2.1,
+            ]}
+          >
+            <sphereGeometry args={[0.15, 8, 8]} />
+            <meshStandardMaterial
+              color={i % 2 === 0 ? '#ff4444' : '#44ff44'}
+              emissive={i % 2 === 0 ? '#ff4444' : '#44ff44'}
+              emissiveIntensity={2}
+            />
+          </mesh>
+        ))}
+        {/* Bottom light / tractor beam source */}
+        <mesh position={[0, -0.5, 0]}>
+          <coneGeometry args={[0.5, 0.3, 12]} />
+          <meshStandardMaterial
+            color="#00ff88"
+            emissive="#00ff88"
+            emissiveIntensity={2}
+          />
+        </mesh>
+        {/* Tractor beam */}
+        <mesh position={[0, -4, 0]}>
+          <cylinderGeometry args={[0.3, 2, 7, 12, 1, true]} />
+          <meshStandardMaterial
+            color="#00ff88"
+            emissive="#00ff88"
+            emissiveIntensity={1}
+            transparent
+            opacity={0.3}
+            side={THREE.DoubleSide}
+          />
+        </mesh>
+        {/* Tractor beam light */}
+        <spotLight
+          position={[0, -0.5, 0]}
+          angle={0.5}
+          penumbra={0.8}
+          intensity={15}
+          distance={15}
+          color="#00ff88"
+        />
+      </group>
+    )}
+    </>
   )
+}
+
+// Wrapper component for Scene compatibility
+export function UnitWithEffects({ unit }: UnitProps) {
+  return <Unit unit={unit} />
 }

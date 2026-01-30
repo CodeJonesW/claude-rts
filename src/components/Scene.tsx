@@ -2,7 +2,7 @@ import { Canvas } from '@react-three/fiber'
 import { OrbitControls, PerspectiveCamera } from '@react-three/drei'
 import { Suspense } from 'react'
 import IsometricGrid from './IsometricGrid'
-import Unit from './Unit'
+import { UnitWithEffects } from './Unit'
 import type { GridCell, Unit as UnitType } from '../types'
 
 interface SceneProps {
@@ -67,7 +67,7 @@ function SceneContent({ cells, exploredPaths, units, hiddenPaths, onFileClick, o
 
       {/* Units */}
       {units.map(unit => (
-        <Unit key={unit.id} unit={unit} />
+        <UnitWithEffects key={unit.id} unit={unit} />
       ))}
 
 {/* Agent base removed - agent floats above the grid */}
