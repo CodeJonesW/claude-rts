@@ -61,10 +61,79 @@ export function useUnits(getCellByPath: (path: string) => GridCell | undefined) 
     // No-op, Claude is always present
   }, [])
 
+  // Reset agent to origin (used when navigating)
+  const resetPosition = useCallback(() => {
+    if (workingTimeoutRef.current) {
+      clearTimeout(workingTimeoutRef.current)
+    }
+    setUnits([{
+      ...CLAUDE_AGENT,
+      position: { x: 0, y: 0 },
+      targetPosition: undefined,
+      targetPath: undefined,
+      state: 'idle',
+    }])
+  }, [])
+
+  // Trigger teleport animation (for navigating into folders)
+  const triggerTeleport = useCallback((onComplete: () => void) => {
+    if (workingTimeoutRef.current) {
+      clearTimeout(workingTimeoutRef.current)
+    }
+
+    // Start teleport animation
+    setUnits(prev => prev.map(u => ({
+      ...u,
+      state: 'teleporting' as const,
+      animationStart: Date.now(),
+    })))
+
+    // After animation, reset and call completion
+    workingTimeoutRef.current = window.setTimeout(() => {
+      setUnits([{
+        ...CLAUDE_AGENT,
+        position: { x: 0, y: 0 },
+        targetPosition: undefined,
+        targetPath: undefined,
+        state: 'idle',
+      }])
+      onComplete()
+    }, 800) // 800ms teleport animation
+  }, [])
+
+  // Trigger beam up animation (for navigating up - UFO abduction)
+  const triggerBeamUp = useCallback((onComplete: () => void) => {
+    if (workingTimeoutRef.current) {
+      clearTimeout(workingTimeoutRef.current)
+    }
+
+    // Start beam up animation
+    setUnits(prev => prev.map(u => ({
+      ...u,
+      state: 'beaming_up' as const,
+      animationStart: Date.now(),
+    })))
+
+    // After animation, reset and call completion
+    workingTimeoutRef.current = window.setTimeout(() => {
+      setUnits([{
+        ...CLAUDE_AGENT,
+        position: { x: 0, y: 0 },
+        targetPosition: undefined,
+        targetPath: undefined,
+        state: 'idle',
+      }])
+      onComplete()
+    }, 1500) // 1.5s beam up animation
+  }, [])
+
   return {
     units,
     handleEvent,
     spawnUnit,
     clearUnits,
+    resetPosition,
+    triggerTeleport,
+    triggerBeamUp,
   }
 }

@@ -1,12 +1,16 @@
-import { useEffect, useCallback, useState, useRef } from 'react'
+import { useEffect, useCallback, useState, useRef, useMemo } from 'react'
 import Scene from './components/Scene'
 import HUD from './components/HUD'
 import FileModal from './components/FileModal'
+import ContextMenu from './components/ContextMenu'
+import Terminal from './components/Terminal'
+import TerminalTabs from './components/TerminalTabs'
 import { useCodebaseState } from './hooks/useCodebaseState'
 import { useEventStream, useDemoEventStream } from './hooks/useEventStream'
 import { useUnits } from './hooks/useUnits'
 import { useTokenUsage } from './hooks/useTokenUsage'
-import type { AgentEvent } from './types'
+import { useTerminalStore } from './stores/terminalStore'
+import type { AgentEvent, GridCell } from './types'
 
 const FILE_API_URL = 'http://localhost:8766'
 
@@ -62,17 +66,127 @@ function App() {
   const [fileLoading, setFileLoading] = useState(false)
   const [fileError, setFileError] = useState<string | null>(null)
 
+  // Hidden directories state
+  const [hiddenPaths, setHiddenPaths] = useState<Set<string>>(new Set())
+
+  // View root for folder navigation (separate from basePath)
+  const [viewRoot, setViewRoot] = useState<string>(basePath)
+
+  // Context menu state
+  const [contextMenu, setContextMenu] = useState<{
+    x: number
+    y: number
+    path: string
+    isDirectory: boolean
+  } | null>(null)
+
+  // Terminal state
+  const [showTerminal, setShowTerminal] = useState(false)
+  const { terminals, activeTerminalId, addTerminal, removeTerminal } = useTerminalStore()
+
+  // Terminal write ref for navigation cd commands
+  const terminalWriteRef = useRef<((data: string) => Promise<void>) | null>(null)
+
   const {
     grid,
     exploredPaths,
     initializeCodebase,
     handleEvent: handleCodebaseEvent,
-    getCellByPath,
+    getSubtreeGrid,
+    getViewCellByPath,
   } = useCodebaseState(basePath)
 
-  const { units, handleEvent: handleUnitEvent } = useUnits(getCellByPath)
+  // Reset viewRoot when basePath changes
+  useEffect(() => {
+    setViewRoot(basePath)
+  }, [basePath])
+
+  // Create view-aware cell lookup for units
+  const getViewAwareCellByPath = useCallback((path: string) => {
+    return getViewCellByPath(path, viewRoot)
+  }, [getViewCellByPath, viewRoot])
+
+  const { units, handleEvent: handleUnitEvent, triggerTeleport, triggerBeamUp } = useUnits(getViewAwareCellByPath)
 
   const { tokenUsage, handleEvent: handleTokenEvent, fetchUsage, setAlertThreshold } = useTokenUsage()
+
+  // Filter grid to hide children of hidden directories and apply viewRoot
+  const filteredGrid = useMemo(() => {
+    // Get grid for current view root
+    const viewGrid = getSubtreeGrid(viewRoot)
+
+    // Apply hidden paths filter
+    if (hiddenPaths.size === 0) return viewGrid
+
+    return viewGrid.filter((cell: GridCell) => {
+      if (!cell.node?.path) return true
+
+      // Check if any hidden path is a parent of this cell
+      for (const hiddenPath of hiddenPaths) {
+        if (cell.node.path.startsWith(hiddenPath + '/')) {
+          return false
+        }
+      }
+      return true
+    })
+  }, [getSubtreeGrid, viewRoot, hiddenPaths])
+
+  // Handle right-click on node
+  const handleContextMenu = useCallback((e: { x: number; y: number; path: string; isDirectory: boolean }) => {
+    setContextMenu(e)
+  }, [])
+
+  // Hide a directory's contents
+  const handleHidePath = useCallback((path: string) => {
+    setHiddenPaths(prev => new Set([...prev, path]))
+  }, [])
+
+  // Show a directory's contents
+  const handleShowPath = useCallback((path: string) => {
+    setHiddenPaths(prev => {
+      const next = new Set(prev)
+      next.delete(path)
+      return next
+    })
+  }, [])
+
+  // Navigation handlers
+  const canNavigateUp = viewRoot !== basePath
+
+  const handleNavigateInto = useCallback(async (path: string) => {
+    // Trigger teleport animation, then navigate
+    triggerTeleport(() => {
+      setViewRoot(path)
+    })
+    if (terminalWriteRef.current) {
+      await terminalWriteRef.current(`cd "${path}"\r`)
+    }
+  }, [triggerTeleport])
+
+  const handleNavigateTo = useCallback(async (path: string) => {
+    // Trigger teleport animation, then navigate
+    triggerTeleport(() => {
+      setViewRoot(path)
+    })
+    if (terminalWriteRef.current) {
+      await terminalWriteRef.current(`cd "${path}"\r`)
+    }
+  }, [triggerTeleport])
+
+  const handleNavigateUp = useCallback(async () => {
+    if (!canNavigateUp) return
+
+    const parentPath = viewRoot.split('/').slice(0, -1).join('/') || basePath
+    const newRoot = parentPath.startsWith(basePath) ? parentPath : basePath
+
+    // Trigger UFO beam up animation, then navigate
+    triggerBeamUp(() => {
+      setViewRoot(newRoot)
+    })
+    if (terminalWriteRef.current) {
+      await terminalWriteRef.current(`cd "${newRoot}"\r`)
+    }
+  }, [viewRoot, basePath, canNavigateUp, triggerBeamUp])
 
   // Handle events from WebSocket
   const handleEvent = useCallback((event: AgentEvent & { basePath?: string; files?: FileEntry[] }) => {
@@ -111,7 +225,14 @@ function App() {
   useEffect(() => {
     if (!initializedRef.current || fileEntries !== DEMO_FILES) {
       console.log('[App] Initializing codebase with', fileEntries.length, 'entries, basePath:', basePath)
-      initializeCodebase(fileEntries)
+      const largeDirs = initializeCodebase(fileEntries)
+
+      // Auto-hide directories with 100+ items
+      if (largeDirs.length > 0) {
+        console.log('[App] Auto-hiding large directories:', largeDirs)
+        setHiddenPaths(new Set(largeDirs))
+      }
+
       initializedRef.current = true
     }
   }, [fileEntries, basePath, initializeCodebase])
@@ -146,14 +267,132 @@ function App() {
     setFileError(null)
   }, [])
 
+  // Terminal handlers
+  const handleToggleTerminal = useCallback(() => {
+    if (!showTerminal) {
+      // Show terminal - if no terminals exist, Terminal component will create one
+      setShowTerminal(true)
+    } else {
+      setShowTerminal(false)
+    }
+  }, [showTerminal])
+
+  const handleNewTerminal = useCallback(async () => {
+    // Show terminal panel if not visible
+    if (!showTerminal) {
+      setShowTerminal(true)
+    }
+    
+    // Create a new terminal in the backend
+    try {
+      const { invoke } = await import('@tauri-apps/api/core')
+      // Use default dimensions - the terminal will resize when it mounts
+      const id = await invoke<number>('terminal_create', {
+        rows: 24,
+        cols: 80,
+        cwd: basePath || undefined,
+      })
+      addTerminal(id)
+    } catch (err) {
+      console.error('Failed to create new terminal:', err)
+    }
+  }, [showTerminal, basePath, addTerminal])
+
+  const handleCloseTerminal = useCallback(
+    async (id: number) => {
+      try {
+        const { invoke } = await import('@tauri-apps/api/core')
+        await invoke('terminal_close', { id })
+        removeTerminal(id)
+        // If we closed the last terminal, hide the panel
+        if (terminals.length === 1) {
+          setShowTerminal(false)
+        }
+      } catch (err) {
+        console.error('Failed to close terminal:', err)
+        // Still remove from store even if backend close fails
+        removeTerminal(id)
+        if (terminals.length === 1) {
+          setShowTerminal(false)
+        }
+      }
+    },
+    [terminals.length, removeTerminal]
+  )
+
   return (
-    <div style={{ width: '100vw', height: '100vh', position: 'relative', overflow: 'hidden' }}>
-      <Scene
-        cells={grid}
-        exploredPaths={exploredPaths}
-        units={units}
-        onFileClick={handleFileClick}
-      />
+    <div style={{ width: '100vw', height: '100vh', position: 'relative', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+      <div style={{ flex: showTerminal ? '1 1 60%' : '1 1 100%', position: 'relative', minHeight: 0 }}>
+        <Scene
+          cells={filteredGrid}
+          exploredPaths={exploredPaths}
+          units={units}
+          hiddenPaths={hiddenPaths}
+          onFileClick={handleFileClick}
+          onContextMenu={handleContextMenu}
+        />
+      </div>
+
+      {/* Terminal Panel */}
+      {showTerminal && (
+        <div
+          style={{
+            flex: '0 0 40%',
+            minHeight: 200,
+            maxHeight: '50vh',
+            display: 'flex',
+            flexDirection: 'column',
+            background: '#0a0a12',
+            borderRadius: 8,
+            overflow: 'hidden',
+            border: '1px solid rgba(100, 150, 255, 0.2)',
+          }}
+          onKeyDown={(e) => e.stopPropagation()}
+          onKeyUp={(e) => e.stopPropagation()}
+          onKeyPress={(e) => e.stopPropagation()}
+        >
+          <TerminalTabs onNewTerminal={handleNewTerminal} onCloseTerminal={handleCloseTerminal} />
+          <div style={{ flex: 1, minHeight: 0 }}>
+            <Terminal
+              cwd={basePath}
+              visible={showTerminal}
+              terminalId={activeTerminalId}
+              onTerminalIdChange={(id) => {
+                if (id !== null) {
+                  addTerminal(id)
+                }
+              }}
+              onWriteReady={(fn) => {
+                terminalWriteRef.current = fn
+              }}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* Terminal Toggle Button */}
+      <button
+        onClick={handleToggleTerminal}
+        style={{
+          position: 'fixed',
+          bottom: showTerminal ? 'calc(40% + 10px)' : 10,
+          right: 10,
+          padding: '8px 16px',
+          background: showTerminal ? '#00ff88' : 'rgba(20, 25, 35, 0.95)',
+          color: showTerminal ? '#0a0a12' : '#00ff88',
+          border: '1px solid #00ff88',
+          borderRadius: 6,
+          cursor: 'pointer',
+          fontFamily: 'system-ui',
+          fontSize: 13,
+          fontWeight: 500,
+          zIndex: 100,
+          transition: 'all 0.2s',
+        }}
+      >
+        {showTerminal ? 'Hide Terminal' : 'Terminal'}
+      </button>
+
       <HUD
         connected={wsConnected}
         totalCount={grid.length}
@@ -163,6 +402,11 @@ function App() {
         isDemoRunning={demoStream.isRunning}
         tokenUsage={tokenUsage}
         onSetCostAlert={setAlertThreshold}
+        terminalOpen={showTerminal}
+        viewRoot={viewRoot}
+        basePath={basePath}
+        onNavigateTo={handleNavigateTo}
+        onNavigateUp={handleNavigateUp}
       />
       {selectedFile && (
         <FileModal
@@ -171,6 +415,21 @@ function App() {
           loading={fileLoading}
           error={fileError}
           onClose={handleCloseModal}
+        />
+      )}
+      {contextMenu && (
+        <ContextMenu
+          x={contextMenu.x}
+          y={contextMenu.y}
+          path={contextMenu.path}
+          isDirectory={contextMenu.isDirectory}
+          isHidden={hiddenPaths.has(contextMenu.path)}
+          canNavigateUp={canNavigateUp}
+          onHide={() => handleHidePath(contextMenu.path)}
+          onShow={() => handleShowPath(contextMenu.path)}
+          onNavigateInto={() => handleNavigateInto(contextMenu.path)}
+          onNavigateUp={handleNavigateUp}
+          onClose={() => setContextMenu(null)}
         />
       )}
     </div>

@@ -2,17 +2,19 @@ import { Canvas } from '@react-three/fiber'
 import { OrbitControls, PerspectiveCamera } from '@react-three/drei'
 import { Suspense } from 'react'
 import IsometricGrid from './IsometricGrid'
-import Unit from './Unit'
+import { UnitWithEffects } from './Unit'
 import type { GridCell, Unit as UnitType } from '../types'
 
 interface SceneProps {
   cells: GridCell[]
   exploredPaths: Set<string>
   units: UnitType[]
+  hiddenPaths?: Set<string>
   onFileClick?: (path: string) => void
+  onContextMenu?: (e: { x: number; y: number; path: string; isDirectory: boolean }) => void
 }
 
-function SceneContent({ cells, exploredPaths, units, onFileClick }: SceneProps) {
+function SceneContent({ cells, exploredPaths, units, hiddenPaths, onFileClick, onContextMenu }: SceneProps) {
   return (
     <>
       {/* Camera */}
@@ -55,11 +57,17 @@ function SceneContent({ cells, exploredPaths, units, onFileClick }: SceneProps) 
       <fog attach="fog" args={['#0a0a18', 40, 100]} />
 
       {/* Grid and buildings */}
-      <IsometricGrid cells={cells} exploredPaths={exploredPaths} onFileClick={onFileClick} />
+      <IsometricGrid
+        cells={cells}
+        exploredPaths={exploredPaths}
+        hiddenPaths={hiddenPaths}
+        onFileClick={onFileClick}
+        onContextMenu={onContextMenu}
+      />
 
       {/* Units */}
       {units.map(unit => (
-        <Unit key={unit.id} unit={unit} />
+        <UnitWithEffects key={unit.id} unit={unit} />
       ))}
 
 {/* Agent base removed - agent floats above the grid */}
@@ -67,15 +75,23 @@ function SceneContent({ cells, exploredPaths, units, onFileClick }: SceneProps) 
   )
 }
 
-export default function Scene({ cells, exploredPaths, units, onFileClick }: SceneProps) {
+export default function Scene({ cells, exploredPaths, units, hiddenPaths, onFileClick, onContextMenu }: SceneProps) {
   return (
     <Canvas
       shadows
       gl={{ antialias: true }}
       style={{ background: '#0a0a12' }}
+      onContextMenu={(e) => e.preventDefault()}
     >
       <Suspense fallback={null}>
-        <SceneContent cells={cells} exploredPaths={exploredPaths} units={units} onFileClick={onFileClick} />
+        <SceneContent
+          cells={cells}
+          exploredPaths={exploredPaths}
+          units={units}
+          hiddenPaths={hiddenPaths}
+          onFileClick={onFileClick}
+          onContextMenu={onContextMenu}
+        />
       </Suspense>
     </Canvas>
   )

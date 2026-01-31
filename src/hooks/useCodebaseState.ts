@@ -71,6 +71,37 @@ function countDescendants(node: FileNode): number {
   return 1 + node.children.reduce((sum, child) => sum + countDescendants(child), 0)
 }
 
+// Find directories with more than threshold descendants
+function findLargeDirectories(node: FileNode, threshold: number): string[] {
+  const largeDirs: string[] = []
+
+  function traverse(n: FileNode) {
+    if (n.type === 'directory' && n.children && n.children.length > 0) {
+      const count = countDescendants(n) - 1 // subtract 1 to not count self
+      if (count >= threshold) {
+        largeDirs.push(n.path)
+      }
+      // Still traverse children to find nested large dirs
+      n.children.forEach(traverse)
+    }
+  }
+
+  traverse(node)
+  return largeDirs
+}
+
+// Find a node by path in the tree
+function findNode(node: FileNode, targetPath: string): FileNode | null {
+  if (node.path === targetPath) return node
+  if (node.children) {
+    for (const child of node.children) {
+      const found = findNode(child, targetPath)
+      if (found) return found
+    }
+  }
+  return null
+}
+
 // Convert tree to grid layout using a radial tree structure
 function treeToGrid(root: FileNode, maxDepth = 6): GridCell[] {
   const cells: GridCell[] = []
@@ -169,7 +200,8 @@ export function useCodebaseState(basePath: string) {
   const [exploredPaths, setExploredPaths] = useState<Set<string>>(new Set())
 
   // Initialize the codebase from a list of file entries
-  const initializeCodebase = useCallback((entries: FileEntry[] | string[]) => {
+  // Returns paths of directories with 100+ items (for auto-hiding)
+  const initializeCodebase = useCallback((entries: FileEntry[] | string[]): string[] => {
     // Handle both old format (string[]) and new format (FileEntry[])
     const fileEntries: FileEntry[] = entries.length > 0 && typeof entries[0] === 'string'
       ? (entries as string[]).map(p => ({ path: p, type: 'file' as const }))
@@ -179,6 +211,9 @@ export function useCodebaseState(basePath: string) {
     const newGrid = treeToGrid(tree)
     setFileTree(tree)
     setGrid(newGrid)
+
+    // Find and return large directories (100+ items)
+    return findLargeDirectories(tree, 100)
   }, [basePath])
 
   // Handle an agent event - update explored state
@@ -248,6 +283,23 @@ export function useCodebaseState(basePath: string) {
     return grid.find(cell => cell.node?.path === path)
   }, [grid])
 
+  // Get subtree grid for a given view root
+  const getSubtreeGrid = useCallback((viewRoot: string): GridCell[] => {
+    if (!fileTree) return []
+    if (viewRoot === basePath) return grid
+
+    const subtreeRoot = findNode(fileTree, viewRoot)
+    if (!subtreeRoot) return grid
+
+    return treeToGrid(subtreeRoot)
+  }, [fileTree, grid, basePath])
+
+  // Get cell by path from a specific subtree view
+  const getViewCellByPath = useCallback((path: string, viewRoot: string): GridCell | undefined => {
+    const viewGrid = getSubtreeGrid(viewRoot)
+    return viewGrid.find(cell => cell.node?.path === path)
+  }, [getSubtreeGrid])
+
   return {
     fileTree,
     grid,
@@ -255,5 +307,7 @@ export function useCodebaseState(basePath: string) {
     initializeCodebase,
     handleEvent,
     getCellByPath,
+    getSubtreeGrid,
+    getViewCellByPath,
   }
 }

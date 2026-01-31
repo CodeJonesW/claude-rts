@@ -35,6 +35,7 @@ export interface AgentEvent {
   path?: string
   timestamp: number
   details?: string
+  agentId?: string
   // Legacy token fields (for backwards compat)
   tokensUsed?: number
   tokensRemaining?: number
@@ -70,7 +71,8 @@ export interface Unit {
   position: { x: number; y: number }
   targetPosition?: { x: number; y: number }
   targetPath?: string
-  state: 'idle' | 'moving' | 'working'
+  state: 'idle' | 'moving' | 'working' | 'teleporting' | 'beaming_up'
+  animationStart?: number
   createdAt: number
 }
 

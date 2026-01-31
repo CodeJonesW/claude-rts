@@ -1,0 +1,28 @@
+{
+  "approval_signals": [
+    "good job",
+    "nice",
+    "perfect",
+    "that's it",
+    "yes",
+    "exactly",
+    "pin this",
+    "note this",
+    "remember this",
+    "save this",
+    "great",
+    "awesome",
+    "works",
+    "working"
+  ],
+  "explicit_pin": "pin:",
+  "track_tools": [
+    "Read",
+    "Write",
+    "Edit",
+    "Bash",
+    "Grep",
+    "Glob"
+  ],
+  "max_recent_tools": 10
+}

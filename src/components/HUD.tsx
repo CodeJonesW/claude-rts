@@ -21,6 +21,11 @@ interface HUDProps {
   isDemoRunning: boolean
   tokenUsage: TokenUsage
   onSetCostAlert: (threshold: number | null) => void
+  terminalOpen?: boolean
+  viewRoot?: string
+  basePath?: string
+  onNavigateTo?: (path: string) => void
+  onNavigateUp?: () => void
 }
 
 export default function HUD({
@@ -31,9 +36,19 @@ export default function HUD({
   onStopDemo,
   isDemoRunning,
   tokenUsage,
-  onSetCostAlert,
+  terminalOpen = false,
+  viewRoot,
+  basePath,
+  onNavigateTo,
+  onNavigateUp,
 }: HUDProps) {
   const recentEvents = eventHistory.slice(-8).reverse()
+
+  // Compute breadcrumb segments
+  const showBreadcrumb = viewRoot && basePath && viewRoot !== basePath
+  const basePathName = basePath?.split('/').pop() || 'root'
+  const relativePath = showBreadcrumb ? viewRoot.replace(basePath + '/', '') : ''
+  const segments = relativePath ? relativePath.split('/') : []
 
   return (
     <div style={{
@@ -84,17 +99,83 @@ export default function HUD({
           </div>
         </div>
 
-        {/* Center - Title */}
-        <div style={{
-          background: 'rgba(0, 0, 0, 0.7)',
-          border: '1px solid #00ff88',
-          padding: '12px 24px',
-          borderRadius: 4,
-          textAlign: 'center',
-        }}>
-          <div style={{ fontSize: 18, fontWeight: 'bold', letterSpacing: 4 }}>CLAUDE RTS</div>
-          <div style={{ fontSize: 10, opacity: 0.7, marginTop: 4 }}>AGENT COMMAND INTERFACE</div>
-        </div>
+        {/* Center - Breadcrumb Navigation */}
+        {showBreadcrumb && onNavigateTo && onNavigateUp && (
+          <div style={{
+            background: 'rgba(0, 0, 0, 0.7)',
+            border: '1px solid #00ff88',
+            padding: '8px 16px',
+            borderRadius: 4,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
+            pointerEvents: 'auto',
+          }}>
+            <span
+              onClick={() => onNavigateTo(basePath)}
+              style={{
+                cursor: 'pointer',
+                opacity: 0.8,
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.opacity = '1'
+                e.currentTarget.style.textDecoration = 'underline'
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.opacity = '0.8'
+                e.currentTarget.style.textDecoration = 'none'
+              }}
+            >
+              {basePathName}
+            </span>
+            {segments.map((seg, i) => {
+              const pathUpToSegment = basePath + '/' + segments.slice(0, i + 1).join('/')
+              return (
+                <span key={i} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span style={{ opacity: 0.5 }}>/</span>
+                  <span
+                    onClick={() => onNavigateTo(pathUpToSegment)}
+                    style={{
+                      cursor: 'pointer',
+                      opacity: i === segments.length - 1 ? 1 : 0.8,
+                      fontWeight: i === segments.length - 1 ? 'bold' : 'normal',
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.textDecoration = 'underline'
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.textDecoration = 'none'
+                    }}
+                  >
+                    {seg}
+                  </span>
+                </span>
+              )
+            })}
+            <button
+              onClick={onNavigateUp}
+              style={{
+                marginLeft: 8,
+                padding: '4px 8px',
+                background: 'transparent',
+                border: '1px solid rgba(0, 255, 136, 0.5)',
+                color: '#00ff88',
+                borderRadius: 4,
+                cursor: 'pointer',
+                fontFamily: 'monospace',
+                fontSize: 12,
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = 'rgba(0, 255, 136, 0.2)'
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = 'transparent'
+              }}
+            >
+              ↑ Up
+            </button>
+          </div>
+        )}
 
         {/* Right - Resources */}
         <div style={{
@@ -105,7 +186,7 @@ export default function HUD({
           <div style={{
             background: 'rgba(0, 0, 0, 0.7)',
             border: '1px solid #00ff88',
-            padding: '12px 16px',
+            padding: '4px 4px',
             borderRadius: 4,
           }}>
             <div style={{ fontSize: 12, opacity: 0.7, marginBottom: 4 }}>FILES</div>
@@ -267,13 +348,14 @@ export default function HUD({
       {/* Bottom left - Event log */}
       <div style={{
         position: 'absolute',
-        bottom: 20,
+        bottom: terminalOpen ? 'calc(40% + 20px)' : 20,
         left: 20,
         width: 320,
         background: 'rgba(0, 0, 0, 0.7)',
         border: '1px solid #00ff88',
         padding: '12px 16px',
         borderRadius: 4,
+        transition: 'bottom 0.2s ease-out',
       }}>
         <div style={{ fontSize: 12, opacity: 0.7, marginBottom: 8 }}>EVENT LOG</div>
         <div style={{ maxHeight: 200, overflow: 'hidden' }}>
@@ -308,9 +390,11 @@ export default function HUD({
       </div>
 
       {/* Bottom right - Controls */}
+              {/* Demo button - only show when not connected */}
+      {!connected && (
       <div style={{
         position: 'absolute',
-        bottom: 20,
+        bottom: terminalOpen ? 'calc(40% + 20px)' : 20,
         right: 20,
         background: 'rgba(0, 0, 0, 0.7)',
         border: '1px solid #00ff88',
@@ -318,11 +402,10 @@ export default function HUD({
         borderRadius: 4,
         pointerEvents: 'auto',
         minWidth: 180,
+        transition: 'bottom 0.2s ease-out',
       }}>
-        <div style={{ fontSize: 12, opacity: 0.7, marginBottom: 8 }}>CONTROLS</div>
 
-        {/* Demo button - only show when not connected */}
-        {!connected && (
+
           <button
             onClick={isDemoRunning ? onStopDemo : onStartDemo}
             style={{
@@ -341,53 +424,10 @@ export default function HUD({
           >
             {isDemoRunning ? 'STOP DEMO' : 'START DEMO'}
           </button>
-        )}
 
-        {/* Cost Alert Settings */}
-        <div style={{ marginTop: 12 }}>
-          <div style={{ fontSize: 11, opacity: 0.7, marginBottom: 6 }}>COST ALERT</div>
-          <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-            {[1, 5, 10].map(amount => (
-              <button
-                key={amount}
-                onClick={() => onSetCostAlert(amount)}
-                style={{
-                  background: tokenUsage.costAlert === amount ? '#00ff88' : '#2a2a4e',
-                  border: 'none',
-                  color: tokenUsage.costAlert === amount ? '#000' : '#00ff88',
-                  padding: '4px 8px',
-                  borderRadius: 3,
-                  cursor: 'pointer',
-                  fontFamily: 'monospace',
-                  fontSize: 10,
-                  fontWeight: tokenUsage.costAlert === amount ? 'bold' : 'normal',
-                }}
-              >
-                ${amount}
-              </button>
-            ))}
-            <button
-              onClick={() => onSetCostAlert(null)}
-              style={{
-                background: tokenUsage.costAlert === null ? '#00ff88' : '#2a2a4e',
-                border: 'none',
-                color: tokenUsage.costAlert === null ? '#000' : '#666',
-                padding: '4px 8px',
-                borderRadius: 3,
-                cursor: 'pointer',
-                fontFamily: 'monospace',
-                fontSize: 10,
-              }}
-            >
-              OFF
-            </button>
-          </div>
-        </div>
 
-        <div style={{ fontSize: 10, opacity: 0.5, marginTop: 10 }}>
-          Drag to rotate • Scroll to zoom
-        </div>
-      </div>
+      </div>        
+    )}
     </div>
   )
 }
