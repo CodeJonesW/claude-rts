@@ -1,31 +1,49 @@
 # Claude RTS (Real-Time Strategy Visualizer)
 
-A real-time 3D visualization system for Claude Code activity. Watch your codebase exploration and file operations come to life in an isometric RTS-style interface.
+A Tauri desktop application that visualizes Claude Code activity in real-time. Watch your codebase exploration and file operations come to life in an isometric RTS-style 3D interface with embedded terminal support.
 
 ![Claude RTS UI](public/ui.png)
 
 ## Features
 
-- **Real-time visualization**: See file reads, writes, edits, and searches as units moving across an isometric grid
-- **Codebase mapping**: Automatically scans and maps your project structure
-- **Token usage tracking**: Monitor Claude Code API usage and costs in real-time
-- **File viewer**: Click on files in the visualization to view their contents
-- **WebSocket streaming**: Live updates as Claude Code performs operations
+- **Real-time 3D visualization**: See file reads, writes, edits, and searches as animated units moving across an isometric grid
+- **Codebase mapping**: Automatically scans and maps your project structure using a radial tree layout
+- **Token usage tracking**: Monitor Claude Code API usage and costs in real-time with budget alerts
+- **Embedded terminal**: Full PTY terminal integration with multi-tab support
+- **File viewer**: Click on files in the visualization to view their contents with syntax highlighting
+- **Directory navigation**: Breadcrumb navigation and collapsible directories for large codebases
+- **Demo mode**: Test the visualization with simulated events
+
+## Tech Stack
+
+### Frontend
+- **React 19** with TypeScript
+- **React Three Fiber** + **Three.js** for 3D rendering
+- **xterm.js** for terminal emulation
+- **Zustand** for state management
+- **Vite** for development and building
+
+### Backend (Tauri)
+- **Tauri 2** for the desktop application framework
+- **Rust** with portable-pty for cross-platform terminal support
+- **tokio** for async runtime
+
+### Event Server
+- **Node.js** with WebSocket for real-time event streaming
+- Bash scripts for Claude Code hook integration
 
 ## Prerequisites
 
-Before setting up, ensure you have the following installed:
-
-- **Node.js** (v18 or higher recommended)
-- **npm** (comes with Node.js)
-- **jq** (JSON processor) - for usage polling
+- **Node.js** v18 or higher
+- **Rust** (for Tauri development)
+- **npm** or **pnpm**
+- **jq** (for usage polling)
   - macOS: `brew install jq`
-  - Linux: `sudo apt-get install jq` or `sudo yum install jq`
-- **curl** (usually pre-installed on macOS/Linux)
+  - Linux: `sudo apt-get install jq`
 
 ## Installation
 
-1. **Clone the repository** (if you haven't already):
+1. **Clone the repository**:
    ```bash
    git clone <repository-url>
    cd claude-rts
@@ -41,171 +59,159 @@ Before setting up, ensure you have the following installed:
    chmod +x server/*.sh
    ```
 
-## Running the Project
+## Running the Application
 
-### Option 1: Start Everything (Recommended)
+### Tauri Desktop App (Recommended)
 
-Start all services (event server, usage poller, and frontend) with one command:
+Run the full desktop application with embedded terminal:
+
+```bash
+npm run tauri:dev
+```
+
+This starts the Tauri app with hot-reload enabled.
+
+### Web Development Mode
+
+For frontend-only development:
 
 ```bash
 npm run start:all
 ```
 
-This will:
-- Start the event server on port 8765 (WebSocket) and 8766 (HTTP)
-- Start the usage poller to monitor Claude Code stats
-- Start the Vite dev server (typically on port 5173)
+This starts:
+- Event server on port 8765 (WebSocket) and 8766 (HTTP)
+- Usage poller for Claude Code stats
+- Vite dev server on port 5173
 
-### Option 2: Start Services Separately
-
-**Start the event server only:**
-```bash
-npm run server
-# or
-./server/start.sh
-```
-
-**Start the frontend only:**
-```bash
-npm run dev
-```
-
-**Start both together:**
-```bash
-npm start
-# or with a specific path to watch
-npm start --path=/path/to/your/project
-```
-
-### Option 3: Manual Start
-
-1. **Terminal 1** - Start the event server:
-   ```bash
-   npx tsx server/event-server.ts
-   ```
-
-2. **Terminal 2** (Optional) - Start the usage poller:
-   ```bash
-   ./server/poll-usage.sh
-   ```
-
-3. **Terminal 3** - Start the frontend:
-   ```bash
-   npm run dev
-   ```
-
-## Accessing the Application
-
-Once running, open your browser to:
-- **Frontend**: http://localhost:5173 (or the port shown in the terminal)
-- **Event Server Health**: http://localhost:8766/health
-
-## Ports Used
-
-- **8765**: WebSocket server for real-time event streaming
-- **8766**: HTTP server for receiving events and serving file contents
-- **5173** (default): Vite dev server for the frontend
-
-## Optional: Claude Code Integration
-
-To receive real-time events from Claude Code, you can set up a hook script:
-
-1. **Configure Claude Code** to use the hook script:
-   - Point Claude Code's hook configuration to: `server/claude-hook.sh`
-   - The hook will automatically send events to the event server
-
-2. **The hook script** (`server/claude-hook.sh`) will:
-   - Listen for Claude Code tool calls (Read, Write, Edit, etc.)
-   - Send events to `http://localhost:8766/event`
-   - Work automatically without blocking Claude Code
-
-## Usage Polling
-
-The usage poller (`server/poll-usage.sh`) reads Claude Code statistics from:
-- `~/.claude/stats-cache.json`
-
-It polls every 3 seconds (configurable) and sends usage updates to the event server. This provides real-time token usage and cost tracking in the visualization.
-
-## Stopping Services
-
-To stop all services:
+### Services Separately
 
 ```bash
-./server/stop.sh
+npm run server    # Event server only
+npm run dev       # Frontend only
+npm start         # Server + frontend
 ```
 
-Or manually:
-- Press `Ctrl+C` in the terminal running the services
-- The `start-all.sh` script will automatically clean up background processes
+## Building for Production
 
-## Project Structure
+### Desktop App
 
-```
-claude-rts/
-├── src/
-│   ├── components/      # React components (Scene, HUD, Units, etc.)
-│   ├── hooks/          # Custom React hooks (event streaming, state management)
-│   └── types.ts        # TypeScript type definitions
-├── server/
-│   ├── event-server.ts # Main event server (WebSocket + HTTP)
-│   ├── claude-hook.sh  # Hook script for Claude Code integration
-│   ├── poll-usage.sh   # Usage statistics poller
-│   ├── start-all.sh    # Start all services script
-│   ├── start.sh        # Start event server script
-│   └── stop.sh         # Stop all services script
-└── package.json        # Dependencies and npm scripts
+```bash
+npm run tauri:build
 ```
 
-## Development
+Outputs platform-specific installers:
+- macOS: `.dmg`
+- Windows: `.exe`
+- Linux: `.AppImage`
 
-### Available Scripts
-
-- `npm run dev` - Start Vite dev server
-- `npm run build` - Build for production
-- `npm run preview` - Preview production build
-- `npm run lint` - Run ESLint
-- `npm run server` - Start event server only
-- `npm start` - Start server and frontend together
-- `npm run start:all` - Start all services (server, poller, frontend)
-
-### Building for Production
+### Web Build
 
 ```bash
 npm run build
 ```
 
-The built files will be in the `dist/` directory.
+Built files output to `dist/`.
+
+## Claude Code Integration
+
+To receive real-time events from Claude Code:
+
+1. **Configure the hook** in Claude Code settings to point to `server/claude-hook.sh`
+
+2. **The hook captures**:
+   - File operations (Read, Write, Edit)
+   - Directory listings and searches
+   - Command executions
+   - Task events
+
+3. Events are sent to `http://localhost:8766/event` and broadcast via WebSocket
+
+## Project Structure
+
+```
+claude-rts/
+├── src/                          # React frontend
+│   ├── App.tsx                   # Main app orchestration
+│   ├── components/
+│   │   ├── Scene.tsx             # Three.js canvas setup
+│   │   ├── IsometricGrid.tsx     # Grid rendering and file buildings
+│   │   ├── Unit.tsx              # Animated agent units
+│   │   ├── HUD.tsx               # Heads-up display and event log
+│   │   ├── FileModal.tsx         # File viewer with syntax highlighting
+│   │   ├── Terminal.tsx          # xterm.js terminal component
+│   │   ├── TerminalTabs.tsx      # Multi-terminal tab management
+│   │   └── ContextMenu.tsx       # Right-click context menu
+│   ├── hooks/
+│   │   ├── useCodebaseState.ts   # File tree and grid management
+│   │   ├── useEventStream.ts     # WebSocket event handling
+│   │   ├── useUnits.ts           # Unit spawning and movement
+│   │   └── useTokenUsage.ts      # Token tracking and cost alerts
+│   └── stores/
+│       └── terminalStore.ts      # Zustand terminal state
+├── src-tauri/                    # Tauri Rust backend
+│   ├── src/
+│   │   ├── lib.rs                # PTY, file scanning, stats reading
+│   │   └── main.rs               # Entry point
+│   ├── Cargo.toml                # Rust dependencies
+│   └── tauri.conf.json           # Tauri configuration
+├── server/                        # Node.js event server
+│   ├── event-server.ts           # WebSocket + HTTP server
+│   ├── claude-hook.sh            # Claude Code hook script
+│   ├── poll-usage.sh             # Usage stats poller
+│   ├── start-all.sh              # Start all services
+│   └── stop.sh                   # Stop all services
+└── package.json
+```
+
+## Available Scripts
+
+| Command | Description |
+|---------|-------------|
+| `npm run dev` | Start Vite dev server |
+| `npm run build` | Build for production |
+| `npm run tauri:dev` | Run Tauri desktop app (dev mode) |
+| `npm run tauri:build` | Build Tauri desktop app |
+| `npm run server` | Start event server only |
+| `npm start` | Start server + frontend |
+| `npm run start:all` | Start all services |
+| `npm run lint` | Run ESLint |
+
+## Ports Used
+
+- **8765**: WebSocket server for real-time events
+- **8766**: HTTP server for events and file serving
+- **5173**: Vite dev server (web mode)
 
 ## Troubleshooting
 
 ### Port Already in Use
 
-If ports 8765 or 8766 are already in use:
-
 ```bash
 ./server/stop.sh
 ```
 
-This will kill any existing processes on those ports.
-
-### Usage Poller Not Working
-
-- Ensure `jq` is installed: `which jq`
-- Check that `~/.claude/stats-cache.json` exists (created by Claude Code)
-- Verify the event server is running on port 8766
-
 ### WebSocket Connection Issues
 
-- Ensure the event server is running: `curl http://localhost:8766/health`
-- Check browser console for connection errors
-- Verify firewall isn't blocking local connections
+```bash
+curl http://localhost:8766/health
+```
+
+Check browser console for connection errors.
+
+### Terminal Not Working (Tauri)
+
+Ensure Rust and Tauri CLI are properly installed:
+```bash
+cargo --version
+npm run tauri info
+```
 
 ### File Structure Not Loading
 
-- The event server scans the current working directory by default
-- Pass a path as an argument: `npx tsx server/event-server.ts /path/to/project`
-- Check that the directory is readable and contains files
+- Event server scans the current working directory by default
+- Pass a custom path: `npx tsx server/event-server.ts /path/to/project`
 
 ## License
 
-[Add your license here]
+MIT
