@@ -102,8 +102,91 @@ function findNode(node: FileNode, targetPath: string): FileNode | null {
   return null
 }
 
-// Convert tree to grid layout using a radial tree structure
-function treeToGrid(root: FileNode, maxDepth = 6): GridCell[] {
+// Spacing constants (in grid units, before gridToWorld 0.8x scaling)
+const SPACING = {
+  DIR_FOOTPRINT: 1.25,   // directory building width (1.0 world) / 0.8 scale
+  FILE_FOOTPRINT: 0.94,  // file building width (0.75 world) / 0.8 scale
+  MIN_SIBLING_GAP: 0.2,  // padding between adjacent siblings
+  SUBTREE_BUFFER: 0.4,   // extra space per child for folders that have children
+}
+
+// Euclidean distance between two points
+function euclideanDistance(x1: number, y1: number, x2: number, y2: number): number {
+  return Math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2)
+}
+
+// Minimum distance required between two nodes to avoid overlap
+function minNodeDistance(a: FileNode, b: FileNode): number {
+  const sizeA = a.type === 'directory' ? SPACING.DIR_FOOTPRINT : SPACING.FILE_FOOTPRINT
+  const sizeB = b.type === 'directory' ? SPACING.DIR_FOOTPRINT : SPACING.FILE_FOOTPRINT
+  return (sizeA + sizeB) / 2 + SPACING.MIN_SIBLING_GAP
+}
+
+// Calculate how much arc length a child needs based on its footprint and subtree
+function childArcLength(child: FileNode): number {
+  const footprint = child.type === 'directory' ? SPACING.DIR_FOOTPRINT : SPACING.FILE_FOOTPRINT
+  const hasChildren = child.type === 'directory' && child.children && child.children.length > 0
+  const subtreeExtra = hasChildren ? SPACING.SUBTREE_BUFFER * Math.min(child.children!.length, 4) : 0
+  return footprint + SPACING.MIN_SIBLING_GAP + subtreeExtra
+}
+
+// Detect collisions between all node pairs
+function detectCollisions(cells: GridCell[]): { i: number; j: number; overlap: number }[] {
+  const collisions: { i: number; j: number; overlap: number }[] = []
+  for (let i = 0; i < cells.length; i++) {
+    for (let j = i + 1; j < cells.length; j++) {
+      if (!cells[i].node || !cells[j].node) continue
+      const dist = euclideanDistance(cells[i].x, cells[i].y, cells[j].x, cells[j].y)
+      const minDist = minNodeDistance(cells[i].node, cells[j].node)
+      if (dist < minDist) {
+        collisions.push({ i, j, overlap: minDist - dist })
+      }
+    }
+  }
+  return collisions
+}
+
+// Push overlapping nodes apart using force-directed repulsion
+function resolveCollisions(cells: GridCell[], maxIterations = 10): GridCell[] {
+  const result = cells.map(c => ({ ...c }))
+
+  for (let iter = 0; iter < maxIterations; iter++) {
+    const collisions = detectCollisions(result)
+    if (collisions.length === 0) break
+
+    const forces = new Map<number, { fx: number; fy: number }>()
+    for (let i = 0; i < result.length; i++) {
+      forces.set(i, { fx: 0, fy: 0 })
+    }
+
+    for (const { i, j, overlap } of collisions) {
+      const dx = result[j].x - result[i].x
+      const dy = result[j].y - result[i].y
+      const dist = Math.max(euclideanDistance(result[i].x, result[i].y, result[j].x, result[j].y), 0.01)
+
+      const pushAmount = (overlap / 2) + 0.05
+      const nx = dx / dist
+      const ny = dy / dist
+
+      forces.get(i)!.fx -= nx * pushAmount
+      forces.get(i)!.fy -= ny * pushAmount
+      forces.get(j)!.fx += nx * pushAmount
+      forces.get(j)!.fy += ny * pushAmount
+    }
+
+    // Apply forces, skip root (index 0)
+    for (let i = 1; i < result.length; i++) {
+      const f = forces.get(i)!
+      result[i].x = Math.round((result[i].x + f.fx) * 100) / 100
+      result[i].y = Math.round((result[i].y + f.fy) * 100) / 100
+    }
+  }
+
+  return result
+}
+
+// Convert tree to grid layout using a radial tree structure with distance-aware spacing
+function treeToGrid(root: FileNode, maxDepth = 3): GridCell[] {
   const cells: GridCell[] = []
 
   // Root at origin
@@ -131,35 +214,25 @@ function treeToGrid(root: FileNode, maxDepth = 6): GridCell[] {
       return a.name.localeCompare(b.name)
     })
 
-    const childCount = sorted.length
     const angleRange = angleEnd - angleStart
 
-    // Calculate weight for each child based on descendants
-    const weights = sorted.map(child => countDescendants(child))
-    const totalWeight = weights.reduce((a, b) => a + b, 0)
+    // Calculate required arc length for each child based on footprint + subtree size
+    const arcLengths = sorted.map(child => childArcLength(child))
+    const totalArcNeeded = arcLengths.reduce((a, b) => a + b, 0)
 
-    // Minimum angle per child to prevent overlapping (in radians)
-    // Larger at depth 1 where we have more items
-    const minAnglePerChild = depth === 1 ? 0.25 : 0.15
+    // Dynamic radius: ensure arc length at this radius fits all children
+    // Arc length = radius * angle, so radius = totalArcNeeded / angleRange
+    const requiredRadius = totalArcNeeded / Math.abs(angleRange)
+    const baseRadius = 3.5 + Math.log2(depth + 1) * 2
+    const radius = Math.max(requiredRadius, baseRadius)
 
-    // Calculate required angle range based on minimum spacing
-    const requiredAngle = childCount * minAnglePerChild
-    const effectiveAngleRange = Math.max(angleRange, requiredAngle)
-
-    // Radius calculation: larger base radius, diminishing growth for deeper levels
-    // Depth 1: 3.5, Depth 2: 5.0, Depth 3: 6.0, Depth 4: 6.8, etc.
-    const baseRadius = 3.5
-    const radius = baseRadius + Math.log2(depth + 1) * 2
-
+    // Allocate angles proportional to each child's arc length requirement
+    const totalArc = arcLengths.reduce((a, b) => a + b, 0)
     let currentAngle = angleStart
 
     sorted.forEach((child, index) => {
-      // Angle span proportional to weight, but with minimum spacing
-      const weightRatio = weights[index] / totalWeight
-      const childAngleSpan = Math.max(
-        weightRatio * effectiveAngleRange,
-        minAnglePerChild
-      )
+      const arcRatio = arcLengths[index] / totalArc
+      const childAngleSpan = arcRatio * angleRange
       const angle = currentAngle + childAngleSpan / 2
 
       // Convert polar to cartesian (relative to parent)
@@ -167,16 +240,15 @@ function treeToGrid(root: FileNode, maxDepth = 6): GridCell[] {
       const y = parentY + Math.sin(angle) * radius
 
       cells.push({
-        x: Math.round(x * 10) / 10,
-        y: Math.round(y * 10) / 10,
+        x: Math.round(x * 100) / 100,
+        y: Math.round(y * 100) / 100,
         node: child,
         elevation: depth * 0.1,
       })
 
       // Recursively layout children in a sub-arc
       if (child.type === 'directory' && child.children && child.children.length > 0) {
-        // Give directories a wider sub-arc for their children
-        const subAngleSpread = Math.max(childAngleSpan * 1.2, 0.4)
+        const subAngleSpread = Math.max(childAngleSpan * 0.9, 0.5)
         const subAngleStart = angle - subAngleSpread / 2
         const subAngleEnd = angle + subAngleSpread / 2
         layoutChildren(child, x, y, depth + 1, subAngleStart, subAngleEnd)
@@ -191,7 +263,8 @@ function treeToGrid(root: FileNode, maxDepth = 6): GridCell[] {
     layoutChildren(root, 0, 0, 1, -Math.PI, Math.PI)
   }
 
-  return cells
+  // Post-layout: resolve any remaining collisions via force-directed repulsion
+  return resolveCollisions(cells)
 }
 
 export function useCodebaseState(basePath: string) {

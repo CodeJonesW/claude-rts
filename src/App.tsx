@@ -80,6 +80,9 @@ function App() {
     isDirectory: boolean
   } | null>(null)
 
+  // Sidebar state
+  const [sidebarOpen, setSidebarOpen] = useState(false)
+
   // Terminal state
   const [showTerminal, setShowTerminal] = useState(false)
   const { terminals, activeTerminalId, addTerminal, removeTerminal } = useTerminalStore()
@@ -407,6 +410,8 @@ function App() {
         basePath={basePath}
         onNavigateTo={handleNavigateTo}
         onNavigateUp={handleNavigateUp}
+        sidebarOpen={sidebarOpen}
+        onToggleSidebar={() => setSidebarOpen(prev => !prev)}
       />
       {selectedFile && (
         <FileModal
