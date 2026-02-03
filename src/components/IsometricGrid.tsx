@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { memo, useMemo, useState } from 'react'
 import { Text, Billboard, Line } from '@react-three/drei'
 import type { GridCell } from '../types'
 
@@ -52,7 +52,7 @@ function getFileColor(name: string | undefined, isDirectory: boolean): string {
   }
 }
 
-function FileBuilding({
+const FileBuilding = memo(function FileBuilding({
   cell,
   explored,
   isHidden,
@@ -203,7 +203,7 @@ function FileBuilding({
       )}
     </group>
   )
-}
+})
 
 // Connection line between parent and child
 function ConnectionLine({
